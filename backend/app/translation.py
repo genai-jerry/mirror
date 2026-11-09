@@ -27,7 +27,7 @@ from fastapi import Request
 
 from .config import ConfigError, load_config
 from .errors import ApiError
-from .languages import Provider, load_language_config
+from .languages import Provider, load_language_config_or_refuse, require_configured_source
 from .logging_setup import log_event
 from .providers.sarvam_translate import SarvamTranslateClient
 from .settings import Settings
@@ -154,27 +154,8 @@ class Translator:
         The answer is the same either way, and it names the code the way the
         contract does.
         """
-        try:
-            config = load_language_config(self.settings)
-        except ConfigError as exc:
-            log_event(
-                "config.invalid",
-                level=logging.ERROR,
-                message=str(exc),
-                name="languages",
-            )
-            raise ApiError(
-                500,
-                "invalid_configuration",
-                "The backend's language configuration cannot be read.",
-            ) from exc
-        if config.source(source_language) is None:
-            raise ApiError(
-                400,
-                "unsupported_language",
-                f"source language {source_language} is not configured",
-                log_fields={"language": source_language},
-            )
+        config = load_language_config_or_refuse(self.settings)
+        require_configured_source(config, source_language)
         try:
             return config.translation_provider_for(source_language)
         except ConfigError as exc:  # pragma: no cover - parsing rejects this configuration

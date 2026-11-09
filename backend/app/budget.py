@@ -44,6 +44,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import Request
+
 from .config import ConfigError, load_config
 from .errors import ApiError
 from .logging_setup import log_event
@@ -240,6 +242,16 @@ def recognition_budget(settings: Settings, **overrides: Any) -> RateBudget:
         deferred_event=RECOGNITION_DEFERRED_EVENT,
         **overrides,
     )
+
+
+def recognition_budget_of(request: Request) -> RateBudget:
+    """The recognition allowance this app was built with — see `app.main.create_app`.
+
+    One per application, so every request draws on the same one: that is what
+    makes the allowance shared across every user rather than per request.
+    """
+    budget: RateBudget = request.app.state.recognition_budget
+    return budget
 
 
 def _calls(raw: Mapping[str, Any], field: str, default: int) -> int:

@@ -1,10 +1,12 @@
-"""The pixel size of an uploaded image, read from its own header.
+"""What an uploaded image is, and how big, read from its own header.
 
 The region hint in the API contract is normalised 0-1 against the uploaded
 image, so the recognition client has to know how wide and tall that image is.
 Reading the header is enough for the two formats the contract accepts (PNG and
 JPEG), and it keeps the backend free of an image-decoding dependency it would
-otherwise need for nothing else.
+otherwise need for nothing else. The same few bytes say which of the two
+formats an upload is, which is how the frame endpoint refuses anything else
+before it spends a recognition call on it.
 
 Nothing here decodes pixels, and nothing here is written to disk: the bytes are
 the request's own upload, already in memory (design decision D5).
@@ -15,6 +17,10 @@ from __future__ import annotations
 import struct
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURE = b"\xff\xd8"
+
+PNG_MEDIA_TYPE = "image/png"
+JPEG_MEDIA_TYPE = "image/jpeg"
 
 # JPEG start-of-frame markers; every one of them carries the frame's size.
 # C4 is the Huffman table and C8/CC are reserved, so they are not frames.
@@ -23,15 +29,29 @@ _JPEG_FRAME_MARKERS = frozenset(
 )
 
 
+def image_media_type(data: bytes) -> str | None:
+    """`image/png`, `image/jpeg`, or None when the bytes are neither.
+
+    The bytes decide, not the caller's own `Content-Type` header: what matters
+    is what the recognition provider will be handed.
+    """
+    if data.startswith(PNG_SIGNATURE):
+        return PNG_MEDIA_TYPE
+    if data.startswith(JPEG_SIGNATURE):
+        return JPEG_MEDIA_TYPE
+    return None
+
+
 def image_dimensions(data: bytes) -> tuple[int, int] | None:
     """`(width, height)` in pixels, or None when the bytes say nothing about it.
 
     None is an answer, not a failure: a caller that cannot learn the size
     leaves the region hint out rather than guessing at one.
     """
-    if data.startswith(PNG_SIGNATURE):
+    media_type = image_media_type(data)
+    if media_type == PNG_MEDIA_TYPE:
         return _png_dimensions(data)
-    if data.startswith(b"\xff\xd8"):
+    if media_type == JPEG_MEDIA_TYPE:
         return _jpeg_dimensions(data)
     return None
 

@@ -19,7 +19,7 @@ from . import __version__
 from .budget import recognition_budget
 from .errors import ApiError, api_error_handler, error_body
 from .logging_setup import configure_logging, log_event, set_request_id
-from .routes import admin, health, languages
+from .routes import admin, frames, health, languages
 from .settings import Settings, load_settings
 from .translation import Translator
 
@@ -73,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(languages.router)
+    app.include_router(frames.router)
     # Registered whether or not ADMIN_TOKEN is set: with it unset the admin
     # endpoints answer 404 in the service's own error shape, which a path that
     # was never routed could not do.

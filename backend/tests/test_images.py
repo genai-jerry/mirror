@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import struct
 
-from app.images import PNG_SIGNATURE, image_dimensions
+from app.images import PNG_SIGNATURE, image_dimensions, image_media_type
 
 
 def png(width: int, height: int) -> bytes:
@@ -72,3 +72,20 @@ def test_a_jpeg_with_no_frame_reports_nothing() -> None:
 def test_a_zero_sized_image_reports_nothing() -> None:
     """A width of zero would make normalising the region hint a division by zero."""
     assert image_dimensions(png(0, 100)) is None
+
+
+# --- Which of the two formats an upload is ---------------------------------
+
+
+def test_a_png_is_named_as_one() -> None:
+    assert image_media_type(png(10, 10)) == "image/png"
+
+
+def test_a_jpeg_is_named_as_one() -> None:
+    assert image_media_type(jpeg(10, 10)) == "image/jpeg"
+
+
+def test_a_format_the_contract_does_not_accept_is_named_as_nothing() -> None:
+    """The frame endpoint refuses these rather than spending a recognition call."""
+    assert image_media_type(b"GIF89a" + b"\x00" * 32) is None
+    assert image_media_type(b"") is None

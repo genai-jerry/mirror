@@ -18,11 +18,15 @@ the endpoint returns.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from .config import ConfigError, load_config
+from .errors import ApiError
+from .logging_setup import log_event
 from .settings import Settings
 
 CONFIG_NAME = "languages"
@@ -36,11 +40,19 @@ class _Coded(Protocol):
 
 @dataclass(frozen=True)
 class Provider:
-    """One named way of reading or translating text."""
+    """One named way of reading or translating text.
+
+    `entry` is the whole configuration entry this provider was read from, so a
+    client with timings of its own — the recognition client's recognition
+    timeout and poll interval — takes them from the same file an operator
+    edits. It plays no part in equality: two entries that name the same
+    provider the same way are the same provider.
+    """
 
     name: str
     kind: str
     model: str | None = None
+    entry: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -74,10 +86,6 @@ class LanguageConfig:
 
     def target(self, code: str) -> TargetLanguage | None:
         return _by_code(self.targets, code)
-
-    def supports(self, source_code: str, target_code: str) -> bool:
-        """Whether this pair is offered. The frame endpoint rejects pairs that are not."""
-        return self.source(source_code) is not None and self.target(target_code) is not None
 
     def recognition_provider_for(self, source_code: str) -> Provider:
         """The provider entry configured to read `source_code` right now."""
@@ -115,6 +123,60 @@ def load_language_config(settings: Settings) -> LanguageConfig:
     return parse_language_config(load_config(CONFIG_NAME, settings))
 
 
+def load_language_config_or_refuse(settings: Settings) -> LanguageConfig:
+    """The language configuration in force, or the one answer a caller can give.
+
+    Only a file put into the override directory by hand can be unusable: the
+    admin endpoint checks a whole file before it stores one. So this is an
+    operator's mistake rather than the app's — the detail goes in one log line,
+    and the caller is told 500 `invalid_configuration` and nothing about our
+    files.
+    """
+    try:
+        return load_language_config(settings)
+    except ConfigError as exc:
+        log_event("config.invalid", level=logging.ERROR, message=str(exc), name=CONFIG_NAME)
+        raise ApiError(
+            500,
+            "invalid_configuration",
+            "The backend's language configuration cannot be read.",
+        ) from exc
+
+
+def require_configured_source(config: LanguageConfig, source_language: str) -> None:
+    """Refuse a source language configuration does not offer, naming the code."""
+    if config.source(source_language) is None:
+        raise _unsupported("source", source_language)
+
+
+def require_configured_target(config: LanguageConfig, target_language: str) -> None:
+    """Refuse a target language configuration does not offer, naming the code."""
+    if config.target(target_language) is None:
+        raise _unsupported("target", target_language)
+
+
+def require_configured_pair(
+    config: LanguageConfig, source_language: str, target_language: str
+) -> None:
+    """Refuse the pair unless configuration offers both halves of it.
+
+    The frame endpoint calls this before anything else, so a request in a
+    language the service does not read costs no provider call at all.
+    """
+    require_configured_source(config, source_language)
+    require_configured_target(config, target_language)
+
+
+def _unsupported(role: str, code: str) -> ApiError:
+    """The 400 of the API contract: it names the code that was not offered."""
+    return ApiError(
+        400,
+        "unsupported_language",
+        f"{role} language {code} is not configured",
+        log_fields={"language": code},
+    )
+
+
 def parse_language_config(raw: Mapping[str, Any]) -> LanguageConfig:
     """Check a whole languages file over and turn it into a `LanguageConfig`.
 
@@ -146,6 +208,9 @@ def _parse_providers(raw: Any) -> dict[str, Provider]:
             name=name,
             kind=_text(entry, "kind", where),
             model=_optional_text(entry, "model", where),
+            # A copy, read-only: what the file said, and nothing a caller can
+            # change under the next caller.
+            entry=MappingProxyType(dict(entry)),
         )
     return providers
 

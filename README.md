@@ -138,8 +138,45 @@ curl -X DELETE http://127.0.0.1:8000/v1/admin/config/overrides \
 curl http://127.0.0.1:8000/v1/languages
 ```
 
-With `APP_TOKEN` set, `GET /v1/languages` needs
-`Authorization: Bearer $APP_TOKEN` as well.
+### Translating one frame
+
+`POST /v1/frames/translate` is the one endpoint the app calls. It takes the
+cropped image as a multipart file (PNG or JPEG, 5 MB at most) and the language
+pair as fields, and answers with the text it read, that text's translation, and
+where the text sits in the image as fractions of its width and height.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/frames/translate \
+  -F image=@crop.png -F source_language=ml-IN -F target_language=en-IN
+```
+
+```json
+{
+  "recognized_text": "…Malayalam text…",
+  "translated_text": "…English text…",
+  "region_hint": {"x": 0.08, "y": 0.41, "width": 0.84, "height": 0.17},
+  "cached": false
+}
+```
+
+`cached` says the translation came from the backend's cache rather than from
+the provider. A frame with no text in it answers 200 with both texts empty and
+`region_hint` null — the app draws nothing for it.
+
+| Answer | What happened |
+|---|---|
+| 400 `unsupported_language` | The pair is not in the configuration. The message names the code. Nothing was sent to a provider. |
+| 400 `invalid_request` | The body is not a frame to translate: no image, an empty one, a format that is not PNG or JPEG, or a missing language. |
+| 413 `image_too_large` | The image is over 5 MB. |
+| 429 `budget_exhausted` | The recognition allowance is used up and the wait ran out. `Retry-After` says when to come back. |
+| 502 `provider_error` | Sarvam failed, or answered something the backend could not read. |
+| 504 `recognition_timeout` | Sarvam's parse job did not finish in time. |
+
+The image is never written to disk: it is in the request's memory and is
+discarded with the response.
+
+With `APP_TOKEN` set, `GET /v1/languages` and `POST /v1/frames/translate` both
+need `Authorization: Bearer $APP_TOKEN`.
 
 ## The factory
 

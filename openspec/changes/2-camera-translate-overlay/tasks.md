@@ -102,7 +102,7 @@ deferred; the backend never exceeds the configured limit.
 
 ## Task 6 — Frame translation endpoint
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #9
 - Depends on: Task 3 (the Sarvam recognition client), Task 4 (the translation
