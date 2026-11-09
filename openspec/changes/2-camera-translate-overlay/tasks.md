@@ -30,7 +30,7 @@ graph TD
 
 ## Task 1 — Backend scaffold
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #4
 - Depends on: nothing
