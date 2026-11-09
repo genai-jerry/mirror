@@ -8,6 +8,14 @@ build/
 .pytest_cache/
 .ruff_cache/
 
+# Android / Gradle
+.gradle/
+local.properties
+*.iml
+.idea/
+.cxx/
+captures/
+
 # Runtime configuration overrides: an operator's files, never the repo's
 runtime-config/
 
