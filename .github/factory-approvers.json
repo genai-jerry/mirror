@@ -1,0 +1,25 @@
+{
+  "_comment": "Gate -> GitHub usernames. spec = G1; design = G2; implementation = who may start ready tasks; testers = who runs the system test cases and may pass them (FACTORY.md §4b); staging = GS (release to the integration branch); release = G3. Empty list = any collaborator; an empty staging list falls back to release, and an empty testers list falls back to implementation.",
+  "spec": [
+    "genai-jerry",
+    "Sowmya-GenAi"
+  ],
+  "design": [
+    "genai-jerry",
+    "Sowmya-GenAi"
+  ],
+  "implementation": [
+    "genai-jerry",
+    "Sowmya-GenAi"
+  ],
+  "testers": [
+    "genai-jerry"
+  ],
+  "staging": [
+    "genai-jerry"
+  ],
+  "release": [
+    "genai-jerry",
+    "Sowmya-GenAi"
+  ]
+}
