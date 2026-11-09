@@ -43,7 +43,7 @@ and `conventions` in `.factory/profile.json`.
 
 ## Task 2 — Language configuration and the languages endpoint
 
-- [x] Status: in review
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #5
 - Depends on: Task 1 (the backend scaffold)
