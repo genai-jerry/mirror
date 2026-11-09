@@ -530,3 +530,53 @@ def test_the_default_backend_is_the_one_a_developer_runs_locally(
 
     with test_data._open_client() as opened:
         assert str(opened.base_url) == test_data.DEFAULT_BACKEND_URL
+
+
+# --- the commands the profile and the plan's own document record -----------
+#
+# A release and a tester do not import this module: they run the words written
+# down in `.factory/profile.json` and in `test-data.md`. Renaming the script or
+# a subcommand without them is a loader that still passes its own tests and
+# loads nothing, discovered at the release. These tests tie the three together.
+
+
+@pytest.fixture(scope="session")
+def recorded_commands() -> dict[str, str]:
+    """The `test_data` block of `.factory/profile.json` — what a release runs."""
+    profile = json.loads((REPO_ROOT / ".factory" / "profile.json").read_text(encoding="utf-8"))
+    return profile["test_data"]
+
+
+@pytest.mark.parametrize("command", ["load", "unload"])
+def test_the_profile_records_a_command_this_loader_accepts(
+    recorded_commands: dict[str, str], data_dir: Path, command: str
+) -> None:
+    """The recorded command names a script that is here and arguments it takes."""
+    words = recorded_commands[command].split()
+    script = next(word for word in words if word.endswith("test_data.py"))
+    assert (REPO_ROOT / script).is_file(), f"the profile's {command} names no script that is here"
+
+    parsed = test_data.build_parser().parse_args(words[words.index(script) + 1 :] + [str(data_dir)])
+
+    assert parsed.command == command
+    # The data directory is the last argument, which is the profile's contract.
+    assert parsed.data_dir == data_dir
+
+
+def test_the_profile_names_the_format_the_records_are_written_in(
+    recorded_commands: dict[str, str], data_dir: Path
+) -> None:
+    written_in = {path.suffix.lstrip(".") for path in data_dir.iterdir() if path.is_file()}
+
+    assert written_in == {recorded_commands["format"]}
+
+
+@pytest.mark.parametrize("command", ["load", "unload"])
+def test_the_loading_section_names_the_same_commands_as_the_profile(
+    recorded_commands: dict[str, str], data_dir: Path, command: str
+) -> None:
+    """A tester follows `test-data.md`, so it must say what the profile says."""
+    document = (data_dir.parent / "test-data.md").read_text(encoding="utf-8")
+    loading = document.split("## Loading", 1)[1]
+
+    assert recorded_commands[command] in loading
