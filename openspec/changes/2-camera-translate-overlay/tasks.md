@@ -180,6 +180,26 @@ languages endpoint, with the chosen pair used for the session's translation
 requests. A language added to the backend configuration appears in the picker
 with no app update.
 
+## Task 11 — Test data loader (#15)
+
+- [ ] Status: not started
+- Repo: genai-jerry/mirror
+- Sub-issue: #15
+- Depends on: Task 2 (the language configuration and languages endpoint),
+  Task 5 (the shared recognition rate budget)
+- Serves scenarios: none directly — it loads the system test data sets the
+  cases in `system-tests/test-plan.md` use
+
+Opened by the Test Planner (exempt from the ~10-task cap). Build a loader so
+that a `load` command applies this epic's backend configuration sets (DS-2
+language configurations, DS-3 low recognition budget) from
+`system-tests/data/` into a running backend, and an `unload` command removes
+them and restores the shipped configuration — both idempotent, so a second
+load does not duplicate or stack. The repo has no `test_data` block in
+`.factory/profile.json` yet: add it (`load`, `unload`, `format`) in the same
+PR, each command one this task ran, and fill in the `## Loading` section of
+`system-tests/test-data.md`.
+
 ## Scenario coverage
 
 Every scenario in `specs/` maps to at least one task:

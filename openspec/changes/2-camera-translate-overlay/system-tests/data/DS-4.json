@@ -1,0 +1,17 @@
+{
+  "set": "DS-4",
+  "name": "Endpoint request sample",
+  "synthetic": true,
+  "how_to_use": "Decode png_base64 to a file (for example: base64 -d frame.b64 > frame.png) and send it to the frame translation endpoint with the unsupported_request parameters. The image is a 1x1 blank PNG: the request must be rejected on the language before any provider sees the image.",
+  "records": [
+    {
+      "id": "unsupported-language-request",
+      "png_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "unsupported_request": {
+        "source_language": "fr-FR",
+        "target_language": "en-IN"
+      },
+      "expected": "A clear rejection naming the unsupported language; no recognition or translation provider call in the backend log."
+    }
+  ]
+}
