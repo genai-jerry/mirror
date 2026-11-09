@@ -1,19 +1,54 @@
 {
   "repo": "genai-jerry/mirror",
   "estate_role": "A new product: Android app for real-time camera-based text translation using Sarvam OCR and translate",
-  "stack": "Not chosen yet. This is a new repository with no code. The first epic's design chooses the stack (approved at G2); the task that scaffolds it fills in this profile.",
+  "stack": "Two halves in one repository. backend/: Python 3.12, FastAPI on uvicorn, httpx for outgoing calls, pytest for tests, ruff for lint and format, dependencies in backend/pyproject.toml managed by uv. The minor version is pinned by backend/.python-version (3.12), which is what makes uv provision CPython 3.12 rather than whatever newer interpreter a runner happens to offer; the Docker image runs python:3.12-slim to match. app/: Android, Kotlin, Jetpack Compose, CameraX, Gradle Kotlin DSL — not created yet; the app scaffold task adds it and extends commands here.",
   "branches": {
     "default": "main",
     "staging": null
   },
   "commands": {
-    "test": null,
-    "build": null,
-    "lint": null
+    "test": "cd backend && uv run pytest",
+    "build": "cd backend && uv build",
+    "lint": "cd backend && uv run ruff check . && uv run ruff format --check ."
   },
-  "conventions": [],
+  "conventions": [
+    "The backend is one package, backend/app/, with one module per concern: settings.py (environment only), config.py (JSON configuration files), logging_setup.py, errors.py, routes/ (one module per endpoint group), providers/ (one module per outgoing provider).",
+    "Build the app through app.main.create_app(settings), never by importing a module-level app in tests. Pass a Settings object in so a test chooses its own configuration directory.",
+    "Secrets and deployment facts come from the environment, through app.settings only. Everything a person may change at runtime — languages, providers, budgets — is a JSON file read through app.config. Never read os.environ outside settings.py.",
+    "Answer every error with the one shape {\"error\": {\"code\": ..., \"message\": ...}} by raising app.errors.ApiError. The code is what the app reads; the message is a plain sentence for an operator.",
+    "Log with app.logging_setup.log_event(name, **fields): one JSON line per event on standard output, the event name taken from the design's logged-events table. The system test cases read these lines, so an event name is part of the contract.",
+    "Type-annotate every function signature, and start each module with `from __future__ import annotations`.",
+    "Tests live in backend/tests/, one file per module under test, named test_<module>.py. A test name says what must be true: test_an_override_replaces_the_shipped_file.",
+    "Line length is 100 and ruff format is the arbiter; run the lint command rather than formatting by hand."
+  ],
+  "qa_notes": [
+    "The whole backend suite is `cd backend && uv run pytest`; uv installs Python 3.12 and syncs dependencies itself, so a clean checkout needs no setup step.",
+    "Use the `client` fixture (backend/tests/conftest.py) for endpoint tests and the `settings` fixture for anything that reads configuration — it points the override directory at pytest's tmp_path, so a test never writes into the repository.",
+    "respx is installed for faking Sarvam's HTTP calls. No test may call Sarvam for real: there must be no live network call in the suite.",
+    "capsys plus json.loads is how a test asserts on a structured log line — see backend/tests/test_logging.py.",
+    "Test data in the suite is synthetic. The epic's system test data sets live in openspec/changes/<epic>/system-tests/data/ and are loaded into a running backend, not into the unit suite."
+  ],
+  "deploy": {
+    "health_checks": [
+      "curl -fsS http://127.0.0.1:8000/healthz"
+    ],
+    "notes": [
+      "The backend runs as ONE instance in v1: the translation cache and the recognition rate budget are per-process (design decisions D7 and D8). Running two replicas doubles the outgoing rate against Sarvam's limit — do not scale out before that state moves out of process.",
+      "SARVAM_API_KEY must be set in the environment or every recognition call fails. ADMIN_TOKEN must be set for the admin configuration endpoints to exist at all, which the system test data loader needs.",
+      "Mount the BACKEND_CONFIG_DIR override directory as a volume. Without it, configuration an operator or the loader writes is lost when the container restarts.",
+      "Build the image from the backend directory: docker build -f backend/Dockerfile -t mirror-backend backend."
+    ]
+  },
   "gotchas": [
-    "New repository: there is no code yet. Do not assume a stack the approved design did not choose.",
-    "The task that scaffolds the project sets stack, commands (test, build, lint — each one a command it ran) and conventions in this file, in the same PR."
+    "`make` is NOT installed on the factory's runners, so never call `make test`. The root Makefile wraps the same commands for a person at a terminal; the commands in this profile are the ones to run.",
+    "`docker` is NOT installed on the factory's runners either. backend/Dockerfile is therefore unverified by any factory run — a change to it must be built by a person before it is trusted.",
+    "The build command is `uv build`, which produces a wheel and a source distribution. It does not build the Docker image.",
+    "backend/.python-version pins Python 3.12 and backend/tests/test_runtime.py fails if the suite runs on anything else. A runner with only a newer Python will have uv download managed CPython 3.12; do not 'fix' that failure by widening the pin, because production runs python:3.12-slim. Changing the version means changing the design, the Dockerfile, .python-version, this profile and that test together.",
+    "The app half does not exist yet. The app scaffold task creates app/ and extends `commands` here so test, build and lint cover both halves; building the app needs the Android SDK on the machine, which the factory's runners do not have.",
+    "backend/config/defaults/languages.json does not exist yet — the language configuration task ships it. app.config.load_config raises ConfigError naming both directories it looked in, which is the expected answer until then.",
+    "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration.",
+    "app.config does not cache: it reads the file on every call. The languages task adds the modification-time check that makes re-reading cheap — do not add caching anywhere else first.",
+    "Camera images are never written to disk. They live in request memory and are discarded with the response.",
+    "The Sarvam key, the admin token and the app token must appear in no log line and no response body."
   ]
 }

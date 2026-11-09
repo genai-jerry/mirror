@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Runtime configuration overrides: an operator's files, never the repo's
+runtime-config/
+
+# Local environment
+.env
