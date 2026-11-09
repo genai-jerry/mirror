@@ -73,7 +73,7 @@ leaves the backend.
 
 ## Task 4 — Translation client with the translation cache
 
-- [ ] Status: not started
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #7
 - Depends on: Task 2 (the language configuration and languages endpoint)
