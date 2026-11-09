@@ -9,26 +9,40 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.genaijerry.mirror.ui.CameraPermissionStatus
+import com.genaijerry.mirror.ui.CameraPreview
 import com.genaijerry.mirror.ui.MainScreen
 import com.genaijerry.mirror.ui.MirrorTheme
 import kotlinx.coroutines.launch
 
 /**
- * The app is one screen: the live camera view, with the camera permission
- * asked for once on the way in and the language picker reachable above it.
+ * The app is one screen: the live camera view with the translated text drawn
+ * over it, the camera permission asked for once on the way in, and the
+ * language picker reachable above both.
  */
 class MainActivity : ComponentActivity() {
 
     private var permissionStatus by mutableStateOf(CameraPermissionStatus.NotAsked)
 
+    /**
+     * The translation showing on the camera. It belongs to the screen rather
+     * than to the app: there is nothing worth keeping about where text sat in
+     * a camera view that has closed.
+     */
+    private val overlay = TranslatedOverlayState()
+
+    private val mirror: MirrorApplication
+        get() = application as MirrorApplication
+
     private val languages: LanguageSelection
-        get() = (application as MirrorApplication).languages
+        get() = mirror.languages
 
     private val requestCameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -57,6 +71,15 @@ class MainActivity : ComponentActivity() {
                     onClosePicker = languages::close,
                     onChooseLanguages = { pair ->
                         lifecycleScope.launch { languages.choose(pair) }
+                    },
+                    overlay = overlay.overlay,
+                    cameraContent = {
+                        CameraPreview(
+                            translator = mirror.frames,
+                            modifier = Modifier.fillMaxSize(),
+                            onAnchorChanged = overlay::reanchor,
+                            onTranslated = overlay::show,
+                        )
                     },
                 )
             }

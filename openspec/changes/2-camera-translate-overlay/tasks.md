@@ -150,7 +150,7 @@ respects the backend's rate budget.
 
 ## Task 9 — Translated overlay anchored to the text
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #12
 - Depends on: Task 6 (the frame translation endpoint), Task 8 (text-region

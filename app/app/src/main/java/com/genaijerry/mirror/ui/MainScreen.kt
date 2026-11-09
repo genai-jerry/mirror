@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.genaijerry.mirror.LanguagePair
 import com.genaijerry.mirror.LanguagePickerState
 import com.genaijerry.mirror.R
+import com.genaijerry.mirror.TranslatedOverlay
 
 /** Test tags the unit tests address the screen by. */
 object MainScreenTags {
@@ -36,8 +37,12 @@ object MainScreenTags {
  * without a device.
  *
  * @param languages the pair in force and the lists the picker offers.
- * @param cameraContent what fills the screen once the camera may be used.
- *   Later tasks draw the translated overlay on top of it.
+ * @param overlay the translation showing on the camera now, or null for
+ *   nothing to draw. It is drawn over [cameraContent], anchored to the place
+ *   the text sits in the view.
+ * @param cameraContent what fills the screen once the camera may be used. It
+ *   is passed in rather than built here because it needs the backend client
+ *   the app holds.
  */
 @Composable
 fun MainScreen(
@@ -48,8 +53,9 @@ fun MainScreen(
     onOpenPicker: () -> Unit,
     onClosePicker: () -> Unit,
     onChooseLanguages: (LanguagePair) -> Unit,
+    overlay: TranslatedOverlay?,
+    cameraContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
-    cameraContent: @Composable () -> Unit = { CameraPreview(Modifier.fillMaxSize()) },
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.scrim) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -66,6 +72,9 @@ fun MainScreen(
                 CameraPermissionStatus.Granted ->
                     Box(modifier = Modifier.fillMaxSize().testTag(MainScreenTags.CAMERA)) {
                         cameraContent()
+                        // Over the live view, on the words themselves — the
+                        // translation is not a panel beside the camera.
+                        TranslatedOverlayLayer(overlay)
                     }
 
                 CameraPermissionStatus.Denied -> PermissionDenied(onOpenSettings)

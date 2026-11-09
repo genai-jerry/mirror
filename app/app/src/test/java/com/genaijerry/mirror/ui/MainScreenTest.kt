@@ -13,6 +13,8 @@ import com.genaijerry.mirror.LanguageOption
 import com.genaijerry.mirror.LanguagePair
 import com.genaijerry.mirror.LanguagePickerState
 import com.genaijerry.mirror.LanguagesStatus
+import com.genaijerry.mirror.NormalizedRect
+import com.genaijerry.mirror.TranslatedOverlay
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -40,6 +42,7 @@ class MainScreenTest {
         onOpenPicker: () -> Unit = {},
         onClosePicker: () -> Unit = {},
         onChooseLanguages: (LanguagePair) -> Unit = {},
+        overlay: TranslatedOverlay? = null,
         cameraContent: @Composable () -> Unit = {},
     ) {
         compose.setContent {
@@ -52,6 +55,7 @@ class MainScreenTest {
                     onOpenPicker = onOpenPicker,
                     onClosePicker = onClosePicker,
                     onChooseLanguages = onChooseLanguages,
+                    overlay = overlay,
                     cameraContent = cameraContent,
                 )
             }
@@ -112,5 +116,30 @@ class MainScreenTest {
         screen(status = CameraPermissionStatus.Granted, languages = loaded.copy(isOpen = true))
 
         compose.onNodeWithTag(LanguagePickerTags.SHEET).assertIsDisplayed()
+    }
+
+    @Test
+    fun the_translation_is_drawn_over_the_camera() {
+        screen(
+            status = CameraPermissionStatus.Granted,
+            overlay = TranslatedOverlay(text = "Kerala", region = SOME_TEXT),
+            cameraContent = { Text("camera") },
+        )
+
+        compose.onNodeWithText("Kerala").assertIsDisplayed()
+    }
+
+    @Test
+    fun no_translation_is_drawn_while_the_camera_is_still_being_asked_for() {
+        screen(
+            status = CameraPermissionStatus.NotAsked,
+            overlay = TranslatedOverlay(text = "Kerala", region = SOME_TEXT),
+        )
+
+        compose.onNodeWithTag(TranslatedOverlayTags.TEXT).assertDoesNotExist()
+    }
+
+    private companion object {
+        val SOME_TEXT = NormalizedRect(x = 0.1f, y = 0.4f, width = 0.8f, height = 0.1f)
     }
 }
