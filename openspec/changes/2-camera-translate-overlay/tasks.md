@@ -121,7 +121,7 @@ cache entry.
 
 ## Task 7 — App scaffold with the live camera screen
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #10
 - Depends on: Task 1 (the backend scaffold — the two scaffolds edit
