@@ -139,6 +139,29 @@ async def test_a_headline_comes_back_with_its_region(recognizer: SarvamParseClie
     }
 
 
+async def test_the_region_is_fractions_of_the_crop_the_app_sent(
+    recognizer: SarvamParseClient,
+) -> None:
+    """The hint belongs to *that* image: a crop twice as big halves every fraction.
+
+    The crop is a JPEG here, which is what the app sends (the client's own
+    `frame.jpg` / `image/jpeg` defaults), and the same boxes on a 2000x1000
+    crop give half of what they give on 1000x500.
+    """
+    route_sarvam()
+
+    recognized = await recognizer.recognize(jpeg(2000, 1000), language="ml-IN")
+
+    assert recognized.text == f"{HEADLINE}\n{SUBHEAD}"
+    assert recognized.region_hint is not None
+    assert recognized.region_hint.as_dict() == {
+        "x": 0.04,
+        "y": 0.205,
+        "width": 0.42,
+        "height": 0.135,
+    }
+
+
 async def test_the_job_is_submitted_with_the_crop_and_the_language(
     recognizer: SarvamParseClient,
 ) -> None:
