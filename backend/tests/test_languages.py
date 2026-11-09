@@ -10,10 +10,12 @@ from conftest import APP_TOKEN
 from fastapi.testclient import TestClient
 
 from app.config import ConfigError
+from app.errors import ApiError
 from app.languages import (
     LanguageConfig,
     load_language_config,
     parse_language_config,
+    require_configured_pair,
 )
 from app.logging_setup import configure_logging
 from app.main import create_app
@@ -277,14 +279,27 @@ def test_an_unconfigured_language_is_named_when_a_provider_is_asked_for(
         load_language_config(settings).recognition_provider_for("fr-FR")
 
 
-def test_a_pair_is_supported_only_when_both_halves_are_configured(
+def test_a_pair_is_accepted_only_when_both_halves_are_configured(
     settings: Settings,
 ) -> None:
+    """What the frame endpoint asks before it calls anybody.
+
+    The refusal names the half that is not configured, because that is the
+    message the API contract promises.
+    """
     config = load_language_config(settings)
 
-    assert config.supports("ml-IN", "en-IN")
-    assert not config.supports("fr-FR", "en-IN")
-    assert not config.supports("ml-IN", "fr-FR")
+    require_configured_pair(config, "ml-IN", "en-IN")
+
+    for source, target, offending in (
+        ("fr-FR", "en-IN", "source language fr-FR is not configured"),
+        ("ml-IN", "fr-FR", "target language fr-FR is not configured"),
+    ):
+        with pytest.raises(ApiError) as raised:
+            require_configured_pair(config, source, target)
+        assert raised.value.status_code == 400
+        assert raised.value.code == "unsupported_language"
+        assert raised.value.message == offending
 
 
 def test_a_code_is_matched_without_regard_to_case(settings: Settings) -> None:
