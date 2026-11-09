@@ -140,6 +140,66 @@ async def test_a_changed_budget_file_changes_the_allowance_without_a_restart(
     assert budget.granted_in_window() == 2
 
 
+async def test_a_request_already_waiting_picks_up_a_raised_allowance(
+    settings: Settings,
+) -> None:
+    """The allowance is read on every pass, not once when the request arrived.
+
+    An operator who raises the budget — or the system test plan's DS-3 set
+    being unloaded again — reaches the requests already in the queue, not only
+    the ones that arrive afterwards.
+    """
+    budget_file(settings, recognition_per_minute=1, max_wait_seconds=5)
+    clock = Clock()
+    raised = False
+
+    async def sleep_and_raise_the_allowance(seconds: float) -> None:
+        nonlocal raised
+        if not raised:
+            budget_file(settings, recognition_per_minute=2, max_wait_seconds=5)
+            raised = True
+        await clock.sleep(seconds)
+
+    budget = recognition_budget(settings, monotonic=clock, sleep=sleep_and_raise_the_allowance)
+    await budget.acquire()
+
+    # The allowance of one is spent, so this request queues. While it waits the
+    # file comes to allow two, and the next pass grants it on the spot — rather
+    # than refusing it at the five-second deadline under the old number.
+    await budget.acquire()
+
+    assert raised
+    assert clock.now == 5.0
+    assert budget.granted_in_window() == 2
+
+
+async def test_a_lowered_allowance_defers_instead_of_exceeding_the_new_limit(
+    settings: Settings,
+) -> None:
+    """DS-3's low budget reaching a backend that has already served calls.
+
+    Four calls go out ten seconds apart under a budget of sixty a minute, and
+    then the budget comes down to two. The minute already holds four, so the
+    next call waits for enough of them to leave it. The new limit is never
+    exceeded: the backend defers.
+    """
+    budget_file(settings, recognition_per_minute=60, max_wait_seconds=60)
+    budget, clock = on_a_fake_clock(settings)
+    for _ in range(4):
+        await budget.acquire()
+        clock.now += 10.0
+    assert budget.granted_in_window() == 4
+
+    budget_file(settings, recognition_per_minute=2, max_wait_seconds=60)
+
+    await budget.acquire()
+
+    # Granted at eighty seconds: the moment the third-oldest call left the
+    # minute and took the count inside the new allowance of two.
+    assert clock.now == 80.0
+    assert budget.granted_in_window() == 2
+
+
 async def test_a_deferred_request_is_logged_with_the_wait_depth(
     settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:
