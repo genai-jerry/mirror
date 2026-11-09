@@ -34,8 +34,10 @@ uv build
 
 ## Building the app
 
-You need a JDK 17 or later and an Android SDK with **platform 37.2** and
-**build-tools 37.0.0**. Android Studio installs both; on a bare machine use
+You need a **JDK 21 or later** and an Android SDK with **platform 37.2** and
+**build-tools 37.0.0**. The app's code targets JVM 17, but the unit suite runs
+on Robolectric's Android 36 runtime, which refuses to start on a JDK 17
+("Android SDK 36 requires Java 21"). Android Studio installs both; on a bare machine use
 the SDK command-line tools and point `ANDROID_HOME` at the SDK (or write
 `sdk.dir=/path/to/sdk` into `app/local.properties`). Gradle itself comes from
 the wrapper, so there is nothing to install for it.
