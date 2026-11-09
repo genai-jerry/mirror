@@ -22,6 +22,7 @@ import respx
 from conftest import APP_TOKEN
 from fastapi.testclient import TestClient
 
+from app.budget import recognition_budget
 from app.config import write_override
 from app.logging_setup import configure_logging
 from app.main import create_app
@@ -358,6 +359,35 @@ def test_the_deferred_request_is_logged_for_the_tester_to_read(
     post(client)
     post(client)
 
+    assert "recognition.deferred" in events(capsys.readouterr().out)
+
+
+def test_a_deferred_frame_is_answered_once_the_allowance_comes_back(
+    settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other half of the budget scenario: queued, not refused.
+
+    `test_a_request_past_the_allowance_is_refused_with_a_retry_after` gives the
+    request no time to wait (`max_wait_seconds=0`), so it proves the refusal.
+    Here the second frame may wait, and does: it is deferred, the slot comes
+    back when the oldest call leaves the minute, and the frame is then answered
+    — the shape of ST-6, with the minute shortened to a twentieth of a second
+    as `test_budget.py` shortens it.
+    """
+    route_sarvam()
+    route_translate()
+    budget_file(settings, recognition_per_minute=1, max_wait_seconds=30)
+    app = create_app(settings)
+    app.state.recognition_budget = recognition_budget(settings, window_seconds=0.05)
+
+    with TestClient(app) as client:
+        configure_logging()
+        assert post(client).status_code == 200
+        waited = post(client)
+
+    assert waited.status_code == 200, "the second frame waited its turn, it was not refused"
+    assert waited.json()["recognized_text"] == RECOGNIZED
+    assert calls_to(PARSE_URL) == 2, "the deferred call went out after the slot came back"
     assert "recognition.deferred" in events(capsys.readouterr().out)
 
 
