@@ -30,7 +30,7 @@ graph TD
 
 ## Task 1 — Backend scaffold
 
-- [x] Status: in review
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #4
 - Depends on: nothing
