@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.logging_setup import configure_logging, log_event, set_request_id
+from app.main import REQUEST_ID_HEADER, create_app
+from app.settings import Settings
 
 
 def _lines(captured: str) -> list[dict]:
@@ -67,6 +69,26 @@ def test_configuring_twice_does_not_double_the_lines(
     log_event("service.started")
 
     assert len(_lines(capsys.readouterr().out)) == 1
+
+
+def test_an_event_logged_while_serving_carries_that_requests_id(
+    settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ST-5, ST-6 and ST-8 read these lines per request, so the id must be the caller's."""
+    app = create_app(settings)
+
+    @app.get("/work")
+    async def work() -> dict[str, bool]:
+        log_event("recognition.call", provider="sarvam-parse", job_id="j-1")
+        return {"ok": True}
+
+    with TestClient(app) as test_client:
+        capsys.readouterr()
+        test_client.get("/work", headers={REQUEST_ID_HEADER: "req-work"})
+
+    (line,) = _lines(capsys.readouterr().out)
+    assert line["event"] == "recognition.call"
+    assert line["request_id"] == "req-work"
 
 
 def test_a_request_logs_its_own_id(client: TestClient, capsys: pytest.CaptureFixture[str]) -> None:

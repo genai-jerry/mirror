@@ -29,3 +29,11 @@ def test_caller_request_id_is_kept(client: TestClient) -> None:
     response = client.get("/healthz", headers={REQUEST_ID_HEADER: "abc123"})
 
     assert response.headers[REQUEST_ID_HEADER] == "abc123"
+
+
+def test_each_request_gets_its_own_id(client: TestClient) -> None:
+    """Two calls that send no id of their own must not be given the same one."""
+    first = client.get("/healthz").headers[REQUEST_ID_HEADER]
+    second = client.get("/healthz").headers[REQUEST_ID_HEADER]
+
+    assert first != second
