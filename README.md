@@ -178,6 +178,35 @@ discarded with the response.
 With `APP_TOKEN` set, `GET /v1/languages` and `POST /v1/frames/translate` both
 need `Authorization: Bearer $APP_TOKEN`.
 
+### The system test data loader
+
+An epic's system test plan names configuration sets a tester needs in force
+before a case can run — a language added, a provider changed, a recognition
+budget of two calls a minute. `backend/scripts/test_data.py` puts them into a
+running backend through the admin endpoints above, and takes them out again. It
+reads the records from the epic's own data directory, which is the last
+argument; `ADMIN_TOKEN` and `BACKEND_URL` say which backend to change.
+
+```bash
+export ADMIN_TOKEN=... BACKEND_URL=http://127.0.0.1:8000
+DATA=openspec/changes/2-camera-translate-overlay/system-tests/data
+
+# the state every case starts from: every override removed, baseline languages
+uv run --project backend python backend/scripts/test_data.py load "$DATA"
+
+# one named set, for the case in front of you
+uv run --project backend python backend/scripts/test_data.py load --set low-budget "$DATA"
+
+# the shipped configuration back
+uv run --project backend python backend/scripts/test_data.py unload "$DATA"
+```
+
+A set replaces one whole configuration file, so running any of these twice
+changes nothing the second time, and a set that governs the budget leaves the
+languages alone. The names a `--set` takes are the record ids in the epic's
+`system-tests/test-data.md`, which also lists the sets a tester uses straight
+from the checkout — those load nowhere, and asking for one says so.
+
 ## The factory
 
 This repository is built by the Software Factory. `FACTORY.md` in the factory

@@ -52,6 +52,11 @@
       "Build the image from the backend directory: docker build -f backend/Dockerfile -t mirror-backend backend."
     ]
   },
+  "test_data": {
+    "load": "uv run --project backend python backend/scripts/test_data.py load",
+    "unload": "uv run --project backend python backend/scripts/test_data.py unload",
+    "format": "json"
+  },
   "gotchas": [
     "`make` is NOT installed on the factory's runners, so never call `make test`. The root Makefile wraps the same commands for a person at a terminal; the commands in this profile are the ones to run.",
     "The commands in this profile run scripts/gate.sh, which covers BOTH halves. The backend half always runs. The app half runs only where a JDK and an Android SDK are on the machine; elsewhere the gate prints 'app: <gate> SKIPPED' and passes on the backend result alone. So a green factory run does NOT by itself mean the app half was built — read the gate's output for the SKIPPED line. Set MIRROR_APP_GATE=required to make a missing SDK a failure.",
@@ -66,6 +71,8 @@
     "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration. Only the files in app.config.MANAGED_CONFIGS (budget, languages) may be written as an override or removed by the admin endpoint.",
     "app.config parses a file again only when its modification time or size has changed, and a write through app.config.write_override forgets the file it wrote. Read configuration through load_config on every request — that is already cheap — and do not add a second cache in front of it.",
     "The admin endpoints (PUT /v1/admin/config/languages, PUT /v1/admin/config/budget, DELETE /v1/admin/config/overrides) exist only when ADMIN_TOKEN is set; without it they answer 404. A whole configuration file is validated before it is stored, so a file the service cannot use is refused with 400 rather than breaking the next request.",
+    "The test_data commands reach the backend over HTTP, so they run from the repository root and need two environment variables: ADMIN_TOKEN (the token the target backend was started with) and BACKEND_URL (where it runs — the default is http://127.0.0.1:8000, which is only right for a backend on the same machine). They take the epic's data directory as their last argument.",
+    "`load` with no --set removes every override and applies the baseline language configuration, which is the state every system test case starts from; `load --set <name>` applies one named set for one case. Both replace a whole configuration file, so running either twice changes nothing the second time.",
     "Camera images are never written to disk. They live in request memory and are discarded with the response.",
     "The Sarvam key, the admin token and the app token must appear in no log line and no response body."
   ]
