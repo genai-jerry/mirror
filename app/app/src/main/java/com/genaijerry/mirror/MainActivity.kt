@@ -13,17 +13,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.genaijerry.mirror.ui.CameraPermissionStatus
 import com.genaijerry.mirror.ui.MainScreen
 import com.genaijerry.mirror.ui.MirrorTheme
+import kotlinx.coroutines.launch
 
 /**
  * The app is one screen: the live camera view, with the camera permission
- * asked for once on the way in.
+ * asked for once on the way in and the language picker reachable above it.
  */
 class MainActivity : ComponentActivity() {
 
     private var permissionStatus by mutableStateOf(CameraPermissionStatus.NotAsked)
+
+    private val languages: LanguageSelection
+        get() = (application as MirrorApplication).languages
 
     private val requestCameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -33,6 +38,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The remembered pair and the backend's list of languages, read on the
+        // way in. The picker reads the list again every time it opens.
+        lifecycleScope.launch { languages.start() }
         setContent {
             MirrorTheme {
                 MainScreen(
@@ -41,6 +49,15 @@ class MainActivity : ComponentActivity() {
                         requestCameraPermission.launch(Manifest.permission.CAMERA)
                     },
                     onOpenSettings = ::openAppSettings,
+                    languages = languages.state,
+                    onOpenPicker = {
+                        languages.open()
+                        lifecycleScope.launch { languages.refresh() }
+                    },
+                    onClosePicker = languages::close,
+                    onChooseLanguages = { pair ->
+                        lifecycleScope.launch { languages.choose(pair) }
+                    },
                 )
             }
         }

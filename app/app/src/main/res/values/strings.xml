@@ -6,4 +6,14 @@
     <string name="camera_permission_body">Mirror translates the text it sees through the camera. Turn the camera on for Mirror in Settings.</string>
     <string name="camera_permission_open_settings">Open settings</string>
     <string name="camera_preview_description">Live camera view</string>
+
+    <!-- The language picker. The names themselves come from the backend. -->
+    <string name="languages_pair">%1$s → %2$s</string>
+    <string name="languages_title">Languages</string>
+    <string name="languages_from">Translate from</string>
+    <string name="languages_to">Translate to</string>
+    <string name="languages_chosen">Chosen</string>
+    <string name="languages_close">Close</string>
+    <string name="languages_loading">Loading the languages…</string>
+    <string name="languages_unavailable">Mirror could not load the languages. Close this and open it again to try once more.</string>
 </resources>
