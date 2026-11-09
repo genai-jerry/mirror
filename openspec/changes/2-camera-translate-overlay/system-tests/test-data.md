@@ -7,17 +7,46 @@ API key is environment configuration, never test data.
 
 ## Loading
 
-The repo has no `test_data` block in `.factory/profile.json` yet — this is
-the first epic, and there is no loader to run. The test data loader task
-(`tasks.md` § Task 11, issue #15) builds it: a `load` command that applies
-the backend configuration sets (DS-2, DS-3) from this epic's data directory
-(`openspec/changes/2-camera-translate-overlay/system-tests/data`, the last
-argument) into a running backend, and an `unload` command that removes them
-and restores the shipped configuration, both idempotent. That task fills in
-this section with the two exact commands in the same PR.
+The two commands, run from the repository root. They are the `test_data`
+block in `.factory/profile.json`, with this epic's data directory as their
+last argument:
+
+```bash
+export ADMIN_TOKEN=...                      # the token the backend was started with
+export BACKEND_URL=http://127.0.0.1:8000    # where that backend runs
+
+# the state every case starts from: nothing left over, baseline languages
+uv run --project backend python backend/scripts/test_data.py load \
+  openspec/changes/2-camera-translate-overlay/system-tests/data
+
+# put the shipped configuration back
+uv run --project backend python backend/scripts/test_data.py unload \
+  openspec/changes/2-camera-translate-overlay/system-tests/data
+```
+
+One case at a time needs one named set. Add `--set <name>` to the load
+command — `baseline`, `add-tamil`, `provider-change` or `low-budget`:
+
+```bash
+uv run --project backend python backend/scripts/test_data.py load --set low-budget \
+  openspec/changes/2-camera-translate-overlay/system-tests/data
+```
+
+A named set replaces the one configuration file it governs and leaves the
+other alone, so lowering the budget for ST-6 keeps the languages a tester
+set for ST-7. Every command is safe to repeat: a set is a whole
+configuration file that replaces the file of the same name, so a second run
+writes the same thing rather than stacking a second copy. `unload` with
+nothing loaded says so and succeeds.
+
+The loader reaches the backend over HTTP, through the admin configuration
+endpoints, so the backend may be anywhere `BACKEND_URL` points. It must have
+been started with `ADMIN_TOKEN` set, or those endpoints do not exist and the
+loader says so.
 
 DS-1 and DS-4 are tester-side materials used straight from the checkout:
-nothing loads them into an environment.
+nothing loads them into an environment, and asking the loader for one of
+their records tells you that.
 
 ### DS-1: Malayalam display headlines
 
@@ -37,12 +66,12 @@ provider-change case needs a fresh translation.
 
 - Used by: ST-7, ST-8
 - Records: `system-tests/data/DS-2.json`
-- Setup: the `## Loading` command, naming the set to apply — `baseline`
-  (Malayalam → English, Sarvam for both steps), `add-tamil` (adds Tamil as
-  a source language), or `provider-change` (maps Malayalam translation to
-  the alternate configured provider entry). The records carry the facts;
-  the loader task maps them onto the configuration shape the language
-  configuration task defines.
+- Setup: the `## Loading` load command with `--set` naming the set to apply
+  — `baseline` (Malayalam → English, Sarvam for both steps), `add-tamil`
+  (adds Tamil as a source language), or `provider-change` (maps Malayalam
+  translation to the alternate configured provider entry). The records carry
+  the facts; the loader maps them onto the languages file's shape, taking the
+  provider entries and the display names from the shipped configuration.
 - Teardown: the `## Loading` unload command, which restores the shipped
   configuration.
 
@@ -55,9 +84,11 @@ backend log, not that a second real vendor exists.
 
 - Used by: ST-6
 - Records: `system-tests/data/DS-3.json`
-- Setup: the `## Loading` command, applying a shared recognition budget of
-  2 requests per minute — low enough that the app's own refresh cadence
-  exhausts it inside a minute, without hammering Sarvam's real limits.
+- Setup: the `## Loading` load command with `--set low-budget`, applying a
+  shared recognition budget of 2 requests per minute — low enough that the
+  app's own refresh cadence exhausts it inside a minute, without hammering
+  Sarvam's real limits. The wait deadline and the cache's lifetime stay as
+  the service ships them.
 - Teardown: the `## Loading` unload command, restoring the configured
   production budget.
 

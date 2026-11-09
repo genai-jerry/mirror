@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
@@ -12,6 +13,13 @@ from app.settings import DEFAULTS_DIR, Settings
 
 ADMIN_TOKEN = "admin-token-for-tests"
 APP_TOKEN = "app-token-for-tests"
+
+#: `backend/scripts/` holds the system test data loader, which is a command a
+#: person runs rather than part of the service's package. Putting it on the
+#: import path here lets its tests import it like any other module.
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 @pytest.fixture
