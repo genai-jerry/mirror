@@ -8,6 +8,7 @@ from conftest import ADMIN_TOKEN
 from fastapi.testclient import TestClient
 
 from app.config import load_config
+from app.languages import load_language_config
 from app.logging_setup import configure_logging
 from app.main import create_app
 from app.settings import Settings
@@ -212,6 +213,36 @@ def test_storing_a_file_is_logged_for_the_operator(
         if line["event"] == "config.override_written"
     ]
     assert written and written[0]["name"] == "languages"
+
+
+def test_a_provider_stored_by_an_operator_is_used_from_the_next_read(
+    admin_client: TestClient, admin_headers: dict[str, str], admin_settings: Settings
+) -> None:
+    """ST-8 through the route an operator and the loader actually use.
+
+    The provider-change set of DS-2 remaps Malayalam translation to the
+    alternate configured entry. Storing it must change which entry the next
+    read resolves, on this same running service.
+    """
+    assert load_language_config(admin_settings).translation_provider_for("ml-IN").name == (
+        "sarvam-translate"
+    )
+
+    remapped = json.loads(
+        (admin_settings.defaults_dir / "languages.json").read_text(encoding="utf-8")
+    )
+    remapped["sources"][0]["translation_provider"] = "sarvam-translate-alt"
+    stored = admin_client.put("/v1/admin/config/languages", headers=admin_headers, json=remapped)
+
+    assert stored.status_code == 200
+    translation = load_language_config(admin_settings).translation_provider_for("ml-IN")
+    assert translation.name == "sarvam-translate-alt"
+    assert translation.model == "sarvam-translate:v1"
+    # The picker is unchanged: a provider change is not a language change.
+    assert admin_client.get("/v1/languages").json() == {
+        "sources": [{"code": "ml-IN", "name": "Malayalam"}],
+        "targets": [{"code": "en-IN", "name": "English"}],
+    }
 
 
 # --- storing a budget file -------------------------------------------------
