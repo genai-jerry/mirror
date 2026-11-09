@@ -59,7 +59,7 @@ Malayalam is the first source language in the shipped configuration.
 
 ## Task 3 — Sarvam recognition client
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #6
 - Depends on: Task 1 (the backend scaffold)
