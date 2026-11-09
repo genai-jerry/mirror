@@ -434,6 +434,41 @@ def test_a_provider_entry_of_another_kind_is_refused(settings: Settings) -> None
     assert "sarvam-translate" in raised.value.message
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("12", id="a string of digits"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(None, id="null"),
+        pytest.param(True, id="a boolean"),
+    ],
+)
+def test_a_provider_entry_with_a_mistyped_timeout_is_refused(
+    settings: Settings, value: Any
+) -> None:
+    """An operator's typo is answered here, not as a raw failure at request time."""
+    with pytest.raises(ApiError) as raised:
+        SarvamParseClient.from_provider_entry(
+            "sarvam-parse", {"kind": "sarvam_parse", "timeout_seconds": value}, settings
+        )
+
+    assert (raised.value.status_code, raised.value.code) == (502, "provider_error")
+    assert "timeout_seconds" in raised.value.message
+    assert raised.value.log_fields["setting"] == "timeout_seconds"
+
+
+def test_a_provider_entry_with_a_mistyped_poll_interval_is_refused(
+    settings: Settings,
+) -> None:
+    with pytest.raises(ApiError) as raised:
+        SarvamParseClient.from_provider_entry(
+            "sarvam-parse", {"kind": "sarvam_parse", "poll_interval_seconds": "1"}, settings
+        )
+
+    assert raised.value.log_fields["setting"] == "poll_interval_seconds"
+
+
 # --- Reading the blocks ----------------------------------------------------
 
 
@@ -559,11 +594,30 @@ def test_no_text_means_no_region() -> None:
 
 
 def test_boxes_that_are_already_fractions_are_left_alone() -> None:
-    """An image this backend cannot measure, with a box that is plainly 0-1."""
-    hint = region_hint([TextBlock(text=HEADLINE, box=(0.1, 0.2, 0.5, 0.6))], b"GIF89a")
+    """The real case: a measurable PNG, which is every upload the contract takes.
+
+    Dividing a fraction by the pixel size again put the overlay in the top-left
+    corner, sub-pixel sized — review round 1's finding.
+    """
+    hint = region_hint([TextBlock(text=HEADLINE, box=(0.1, 0.2, 0.5, 0.6))], png(1000, 500))
 
     assert hint is not None
     assert hint.as_dict() == {"x": 0.1, "y": 0.2, "width": 0.4, "height": 0.4}
+
+
+def test_fractions_are_left_alone_whether_the_image_can_be_measured_or_not() -> None:
+    """The numbers decide, so an unmeasurable image reads the same way."""
+    box = [TextBlock(text=HEADLINE, box=(0.1, 0.2, 0.5, 0.6))]
+
+    assert region_hint(box, b"GIF89a") == region_hint(box, png(1000, 500))
+
+
+def test_a_box_inside_the_first_pixel_is_read_as_fractions() -> None:
+    """The cost of the rule, stated: as pixels this box is text no reader can see."""
+    hint = region_hint([TextBlock(text=HEADLINE, box=(0, 0, 1, 1))], png(1000, 500))
+
+    assert hint is not None
+    assert hint.as_dict() == {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
 
 
 def test_pixels_against_an_unmeasurable_image_give_no_region() -> None:

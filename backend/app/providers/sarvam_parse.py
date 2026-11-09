@@ -136,7 +136,9 @@ class SarvamParseClient:
         The entry's `kind` has to be `sarvam_parse`; a wrong kind is an
         operator's configuration mistake, so it is named plainly. `timeout_seconds`
         and `poll_interval_seconds` are optional in the entry, which is what makes
-        the design's 12 seconds and 1 second configurable without a restart.
+        the design's 12 seconds and 1 second configurable without a restart. Every
+        value an operator may have mistyped is checked here, where the answer is
+        still a plain refusal naming the key, rather than at request time.
         """
         kind = entry.get("kind")
         if kind != PROVIDER_KIND:
@@ -148,7 +150,9 @@ class SarvamParseClient:
                 log_fields={"provider": name, "provider_kind": kind},
             )
         from_entry: dict[str, Any] = {
-            key: entry[key] for key in ("timeout_seconds", "poll_interval_seconds") if key in entry
+            key: _seconds(name, key, entry[key])
+            for key in ("timeout_seconds", "poll_interval_seconds")
+            if key in entry
         }
         return cls(settings, provider_name=name, **{**from_entry, **overrides})
 
@@ -360,6 +364,24 @@ class SarvamParseClient:
                 **_present(log_fields),
             },
         )
+
+
+def _seconds(provider: str, key: str, value: Any) -> float:
+    """A number of seconds an operator wrote in configuration, or a refusal.
+
+    JSON keeps `12` and `"12"` apart, so a string here is a typo in the file
+    rather than a value to rescue: saying which key is wrong is more use to the
+    operator than quietly accepting it.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise ApiError(
+            502,
+            "provider_error",
+            f"Recognition provider {provider} has {key} set to {value!r}, "
+            "which is not a number of seconds above zero.",
+            log_fields={"provider": provider, "setting": key},
+        )
+    return float(value)
 
 
 def _present(fields: Mapping[str, Any]) -> dict[str, Any]:
@@ -581,9 +603,17 @@ def _ordered(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, 
 def region_hint(blocks: Sequence[TextBlock], image: bytes) -> Region | None:
     """The union of the blocks' boxes, as fractions of the uploaded image.
 
+    Sarvam does not document whether its coordinates are pixels or fractions,
+    so the numbers decide, and they decide before the image is measured: a box
+    whose every coordinate already sits inside 0-1 is taken as fractions and
+    used as it is. Read as pixels the same box could only describe text inside
+    the image's top-left single pixel, which is never what a reader is looking
+    at, so there is nothing to lose by reading it the other way — and dividing
+    it by the pixel size would put the overlay in that corner, tiny.
+
     None when nothing was recognized, when no block carried a box, or when the
-    image's own size is unknown and the boxes are plainly not fractions already
-    — the contract would rather say nothing than anchor the overlay wrongly.
+    boxes are pixels of an image this backend cannot measure — the contract
+    would rather say nothing than anchor the overlay wrongly.
     """
     boxes = [block.box for block in blocks if block.box is not None]
     if not boxes:
@@ -593,10 +623,10 @@ def region_hint(blocks: Sequence[TextBlock], image: bytes) -> Region | None:
     x1 = max(box[2] for box in boxes)
     y1 = max(box[3] for box in boxes)
 
+    if min(x0, y0) >= 0.0 and max(x1, y1) <= 1.0:
+        return _region(x0, y0, x1, y1)
     size = image_dimensions(image)
     if size is None:
-        if max(x1, y1) <= 1.0 and min(x0, y0) >= 0.0:
-            return _region(x0, y0, x1, y1)
         return None
     width, height = size
     return _region(x0 / width, y0 / height, x1 / width, y1 / height)
