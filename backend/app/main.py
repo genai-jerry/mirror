@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .errors import ApiError, api_error_handler, error_body
 from .logging_setup import configure_logging, log_event, set_request_id
-from .routes import health
+from .routes import admin, health, languages
 from .settings import Settings, load_settings
 
 REQUEST_ID_HEADER = "X-Request-Id"
@@ -62,6 +62,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(health.router)
+    app.include_router(languages.router)
+    # Registered whether or not ADMIN_TOKEN is set: with it unset the admin
+    # endpoints answer 404 in the service's own error shape, which a path that
+    # was never routed could not do.
+    app.include_router(admin.router)
 
     log_event(
         "service.started",

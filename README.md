@@ -58,11 +58,13 @@ secrets and where things are (design decision D6).
 
 | File | Holds |
 |---|---|
-| `backend/config/defaults/languages.json` | The shipped languages and their providers. Added by the language configuration task. |
+| `backend/config/defaults/languages.json` | The shipped source and target languages, and the named provider entry that reads and translates each source language. |
 | `backend/config/defaults/budget.json` | The shipped per-minute recognition and translation budgets. |
 
 An operator's change is a whole replacement file of the same name in the
-override directory, so deleting it restores what the service shipped with.
+override directory, so deleting it restores what the service shipped with. A
+file is read again only when it has changed, so a change takes effect on the
+next request and needs no restart.
 
 | Variable | Meaning |
 |---|---|
@@ -70,6 +72,35 @@ override directory, so deleting it restores what the service shipped with.
 | `BACKEND_CONFIG_DIR` | The override directory. Default `./runtime-config`. |
 | `ADMIN_TOKEN` | Set it to switch the admin configuration endpoints on. They do not exist without it. |
 | `APP_TOKEN` | Optional. Set it to make the app send that token on every call (design decision D10). |
+
+### Changing the configuration of a running backend
+
+Three endpoints, all needing `Authorization: Bearer $ADMIN_TOKEN`, all safe to
+repeat. A body is a whole configuration file, never a part of one; a file the
+service could not use is refused with a message saying why, and nothing is
+stored. This is also the surface the system test data loader calls.
+
+```bash
+# add a language, or point one at a different provider entry
+curl -X PUT http://127.0.0.1:8000/v1/admin/config/languages \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  --data @my-languages.json
+
+# lower the per-minute budgets
+curl -X PUT http://127.0.0.1:8000/v1/admin/config/budget \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"recognition_per_minute": 2, "translation_per_minute": 60, "max_wait_seconds": 15}'
+
+# put everything back to what the service shipped with
+curl -X DELETE http://127.0.0.1:8000/v1/admin/config/overrides \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# what the app's picker shows — codes and names, and nothing else
+curl http://127.0.0.1:8000/v1/languages
+```
+
+With `APP_TOKEN` set, `GET /v1/languages` needs
+`Authorization: Bearer $APP_TOKEN` as well.
 
 ## The factory
 

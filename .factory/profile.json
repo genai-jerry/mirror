@@ -45,9 +45,9 @@
     "The build command is `uv build`, which produces a wheel and a source distribution. It does not build the Docker image.",
     "backend/.python-version pins Python 3.12 and backend/tests/test_runtime.py fails if the suite runs on anything else. A runner with only a newer Python will have uv download managed CPython 3.12; do not 'fix' that failure by widening the pin, because production runs python:3.12-slim. Changing the version means changing the design, the Dockerfile, .python-version, this profile and that test together.",
     "The app half does not exist yet. The app scaffold task creates app/ and extends `commands` here so test, build and lint cover both halves; building the app needs the Android SDK on the machine, which the factory's runners do not have.",
-    "backend/config/defaults/languages.json does not exist yet — the language configuration task ships it. app.config.load_config raises ConfigError naming both directories it looked in, which is the expected answer until then.",
-    "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration.",
-    "app.config does not cache: it reads the file on every call. The languages task adds the modification-time check that makes re-reading cheap — do not add caching anywhere else first.",
+    "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration. Only the files in app.config.MANAGED_CONFIGS (budget, languages) may be written as an override or removed by the admin endpoint.",
+    "app.config parses a file again only when its modification time or size has changed, and a write through app.config.write_override forgets the file it wrote. Read configuration through load_config on every request — that is already cheap — and do not add a second cache in front of it.",
+    "The admin endpoints (PUT /v1/admin/config/languages, PUT /v1/admin/config/budget, DELETE /v1/admin/config/overrides) exist only when ADMIN_TOKEN is set; without it they answer 404. A whole configuration file is validated before it is stored, so a file the service cannot use is refused with 400 rather than breaking the next request.",
     "Camera images are never written to disk. They live in request memory and are discarded with the response.",
     "The Sarvam key, the admin token and the app token must appear in no log line and no response body."
   ]
