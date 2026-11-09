@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import load_config
 from app.logging_setup import configure_logging
+from app.main import create_app
 from app.settings import Settings
 
 LANGUAGES_WITH_TAMIL: dict[str, Any] = {
@@ -74,6 +75,25 @@ def test_the_admin_token_is_required(
     admin_client: TestClient, method: str, path: str, header: dict[str, str]
 ) -> None:
     response = admin_client.request(method, path, headers=header, json={})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
+
+
+@pytest.mark.parametrize(("method", "path"), EVERY_ENDPOINT)
+def test_a_token_with_a_character_outside_plain_ascii_is_refused(
+    admin_settings: Settings, method: str, path: str
+) -> None:
+    """Review round 1: comparing it as text crashed, so the caller got a 500."""
+    app = create_app(admin_settings)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.request(
+            method,
+            path,
+            headers={"Authorization": "Bearer töken".encode("latin-1")},
+            json={},
+        )
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"

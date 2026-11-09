@@ -12,6 +12,12 @@ Two tokens, both sent as `Authorization: Bearer <token>`:
 
 Neither token is read here from the environment: both arrive in `Settings`
 (`app.settings`), and neither is ever logged or returned.
+
+A call carrying any characters at all is refused rather than crashing the
+answer. Choose a token of plain ASCII characters even so: a server hands a
+header's bytes over decoded as latin-1, while the environment hands the
+configured token over decoded as UTF-8, so a token with an accent in it would
+never match what the client that sent it meant.
 """
 
 from __future__ import annotations
@@ -73,7 +79,12 @@ def _bearer_token(request: Request) -> str | None:
 
 
 def _matches(given: str | None, expected: str | None) -> bool:
-    """Compare in constant time, so a wrong token tells the caller nothing."""
+    """Compare in constant time, so a wrong token tells the caller nothing.
+
+    As bytes, not as text: a caller sends whatever characters it likes, and
+    `compare_digest` refuses two strings when either holds a character outside
+    plain ASCII. Any bytes compare, and they compare in constant time.
+    """
     if not given or not expected:
         return False
-    return compare_digest(given, expected)
+    return compare_digest(given.encode("utf-8"), expected.encode("utf-8"))

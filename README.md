@@ -73,6 +73,10 @@ next request and needs no restart.
 | `ADMIN_TOKEN` | Set it to switch the admin configuration endpoints on. They do not exist without it. |
 | `APP_TOKEN` | Optional. Set it to make the app send that token on every call (design decision D10). |
 
+Make both tokens long and of plain ASCII characters. A token with an accent in
+it is refused rather than accepted, because an HTTP header carries its bytes in
+a different encoding from the one the environment gives the backend.
+
 ### Changing the configuration of a running backend
 
 Three endpoints, all needing `Authorization: Bearer $ADMIN_TOKEN`, all safe to

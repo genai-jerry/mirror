@@ -200,6 +200,26 @@ def test_the_app_token_has_to_be_a_bearer_token(settings: Settings, header: dict
         assert client.get("/v1/languages", headers=header).status_code == 401
 
 
+def test_a_token_with_a_character_outside_plain_ascii_is_refused(
+    settings: Settings,
+) -> None:
+    """Review round 1: comparing it as text crashed, so the caller got a 500.
+
+    The header arrives decoded as latin-1, so these bytes reach the guard as
+    `töken`. The client is built to answer rather than re-raise, so a return of
+    this fault reads as 500 instead of 401 and not as a stray exception.
+    """
+    app = create_app(replace(settings, app_token=APP_TOKEN))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/v1/languages", headers={"Authorization": "Bearer töken".encode("latin-1")}
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
+
+
 def test_the_right_app_token_is_let_through(settings: Settings) -> None:
     with TestClient(create_app(replace(settings, app_token=APP_TOKEN))) as client:
         response = client.get("/v1/languages", headers={"Authorization": f"Bearer {APP_TOKEN}"})
