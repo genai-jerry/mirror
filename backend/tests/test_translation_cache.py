@@ -57,6 +57,11 @@ def test_a_different_target_language_is_a_different_key() -> None:
     assert key(target="en-IN") != key(target="hi-IN")
 
 
+def test_a_different_source_language_is_a_different_key() -> None:
+    """The same characters read as another language are another translation."""
+    assert key(source="ml-IN") != key(source="hi-IN")
+
+
 def test_a_language_code_in_another_case_is_the_same_language() -> None:
     assert key(source="ml-IN") == key(source="ml-in")
 

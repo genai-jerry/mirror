@@ -97,6 +97,30 @@ def malayalam_mapped_to(entry: str) -> dict:
     }
 
 
+def two_sources_sharing_one_provider() -> dict:
+    """Malayalam and Hindi, both translated by the same provider entry.
+
+    One entry for both languages is what leaves the source language as the
+    only thing separating their cache entries.
+    """
+    return {
+        "sources": [
+            {
+                "code": code,
+                "name": name,
+                "recognition_provider": "sarvam-parse",
+                "translation_provider": "sarvam-translate",
+            }
+            for code, name in (("ml-IN", "Malayalam"), ("hi-IN", "Hindi"))
+        ],
+        "targets": [{"code": "en-IN", "name": "English"}],
+        "providers": {
+            "sarvam-parse": {"kind": "sarvam_parse"},
+            "sarvam-translate": {"kind": "sarvam_translate", "model": "mayura:v1"},
+        },
+    }
+
+
 def lines(captured: str) -> list[dict]:
     return [json.loads(line) for line in captured.strip().splitlines() if line.strip()]
 
@@ -178,6 +202,20 @@ async def test_a_different_headline_is_translated_on_its_own(
 
     await translate(translator)
     answer = await translate(translator, OTHER_HEADLINE)
+
+    assert route.call_count == 2
+    assert answer.cached is False
+
+
+async def test_the_same_text_read_as_another_source_language_is_translated_again(
+    translator: Translator, settings: Settings
+) -> None:
+    """Both languages share one provider entry, so only the source separates them."""
+    write_languages(settings, two_sources_sharing_one_provider())
+    route = route_translate()
+
+    await translator.translate(HEADLINE, source_language="ml-IN", target_language="en-IN")
+    answer = await translator.translate(HEADLINE, source_language="hi-IN", target_language="en-IN")
 
     assert route.call_count == 2
     assert answer.cached is False
