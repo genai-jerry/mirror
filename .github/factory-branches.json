@@ -1,0 +1,7 @@
+{
+  "_comment": "Integration-branch policy (FACTORY.md §6a) and epic-branch policy (§6b). Implementation PRs merge to `staging`; the factory cuts the branch from the default branch on first need when auto_create is on. With `epics: true` each epic also gets its own factory/epic-<epic-issue> branch: its spec, design and task PRs merge there first, so epics are verified in isolation, and one integration PR carries a finished epic to `staging`.",
+  "staging": "staging",
+  "required": true,
+  "auto_create": true,
+  "epics": true
+}
