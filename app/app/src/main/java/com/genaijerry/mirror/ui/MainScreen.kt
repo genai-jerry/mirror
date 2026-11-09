@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.genaijerry.mirror.LanguagePair
+import com.genaijerry.mirror.LanguagePickerState
 import com.genaijerry.mirror.R
 
 /** Test tags the unit tests address the screen by. */
@@ -29,9 +31,11 @@ object MainScreenTags {
  * The whole screen, with no state of its own.
  *
  * Everything that touches the system — asking for the camera permission,
- * opening the settings app, running CameraX — is passed in, which is what
- * lets the unit tests drive the screen without a device.
+ * opening the settings app, running CameraX, reading the languages from the
+ * backend — is passed in, which is what lets the unit tests drive the screen
+ * without a device.
  *
+ * @param languages the pair in force and the lists the picker offers.
  * @param cameraContent what fills the screen once the camera may be used.
  *   Later tasks draw the translated overlay on top of it.
  */
@@ -40,47 +44,73 @@ fun MainScreen(
     status: CameraPermissionStatus,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
+    languages: LanguagePickerState,
+    onOpenPicker: () -> Unit,
+    onClosePicker: () -> Unit,
+    onChooseLanguages: (LanguagePair) -> Unit,
     modifier: Modifier = Modifier,
     cameraContent: @Composable () -> Unit = { CameraPreview(Modifier.fillMaxSize()) },
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.scrim) {
-        when (status) {
-            CameraPermissionStatus.NotAsked -> {
-                // Ask once, when the screen first appears.
-                LaunchedEffect(Unit) { onRequestPermission() }
-                CenteredMessage(
-                    tag = MainScreenTags.STARTING,
-                    text = stringResource(R.string.camera_starting),
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (status) {
+                CameraPermissionStatus.NotAsked -> {
+                    // Ask once, when the screen first appears.
+                    LaunchedEffect(Unit) { onRequestPermission() }
+                    CenteredMessage(
+                        tag = MainScreenTags.STARTING,
+                        text = stringResource(R.string.camera_starting),
+                    )
+                }
+
+                CameraPermissionStatus.Granted ->
+                    Box(modifier = Modifier.fillMaxSize().testTag(MainScreenTags.CAMERA)) {
+                        cameraContent()
+                    }
+
+                CameraPermissionStatus.Denied -> PermissionDenied(onOpenSettings)
             }
 
-            CameraPermissionStatus.Granted ->
-                Box(modifier = Modifier.fillMaxSize().testTag(MainScreenTags.CAMERA)) {
-                    cameraContent()
-                }
+            // The languages can be changed at any time, so the button sits
+            // above whatever the camera is doing underneath.
+            LanguageBar(
+                state = languages,
+                onOpenPicker = onOpenPicker,
+                modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+            )
 
-            CameraPermissionStatus.Denied ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp)
-                        .testTag(MainScreenTags.PERMISSION_DENIED),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = stringResource(R.string.camera_permission_title),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.camera_permission_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 24.dp),
-                    )
-                    Button(onClick = onOpenSettings) {
-                        Text(stringResource(R.string.camera_permission_open_settings))
-                    }
-                }
+            if (languages.isOpen) {
+                LanguagePickerSheet(
+                    state = languages,
+                    onChoose = onChooseLanguages,
+                    onClose = onClosePicker,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionDenied(onOpenSettings: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .testTag(MainScreenTags.PERMISSION_DENIED),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(R.string.camera_permission_title),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Text(
+            text = stringResource(R.string.camera_permission_body),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp, bottom = 24.dp),
+        )
+        Button(onClick = onOpenSettings) {
+            Text(stringResource(R.string.camera_permission_open_settings))
         }
     }
 }

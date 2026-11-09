@@ -167,7 +167,7 @@ on screen — never a blank, never an error state.
 
 ## Task 10 — Language picker served by the backend
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #13
 - Depends on: Task 2 (the language configuration and languages endpoint),

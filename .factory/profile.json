@@ -37,7 +37,9 @@
     "The app's suite is `cd app && ./gradlew testDevDebugUnitTest`. Tests live in app/app/src/test/java/, mirroring the main package. A test name says what must be true: the_screen_asks_for_the_camera_exactly_once_when_it_opens.",
     "Screen tests run on Robolectric, so they need no device and no emulator. Use createComposeRule() from androidx.compose.ui.test.junit4.v2 — the older androidx.compose.ui.test.junit4.createComposeRule is deprecated.",
     "app/app/src/test/resources/robolectric.properties pins the Android runtime the tests use (36), because Robolectric has no Android 37 yet. Do not also pin an SDK per test class.",
-    "No test may touch a real camera or a real backend. The device and the network are parameters a test supplies (see conventions)."
+    "No test may touch a real camera or a real backend. The device and the network are parameters a test supplies (see conventions).",
+    "mockwebserver3 (shipped with OkHttp) is how an app test answers a backend request — see BackendLanguageCatalogueTest. Everything above a single HTTP client is tested against a fake of its interface instead (FakeLanguageCatalogue in app/app/src/test/java/com/genaijerry/mirror/LanguageTestSupport.kt).",
+    "An activity test runs against TestMirrorApplication, declared with @Config(application = TestMirrorApplication::class). That is what keeps MirrorApplication's real backend client out of the suite, so add a new app-wide dependency to both classes."
   ],
   "deploy": {
     "health_checks": [
