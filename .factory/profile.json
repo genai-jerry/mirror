@@ -1,0 +1,19 @@
+{
+  "repo": "genai-jerry/mirror",
+  "estate_role": "A new product: Android app for real-time camera-based text translation using Sarvam OCR and translate",
+  "stack": "Not chosen yet. This is a new repository with no code. The first epic's design chooses the stack (approved at G2); the task that scaffolds it fills in this profile.",
+  "branches": {
+    "default": "main",
+    "staging": null
+  },
+  "commands": {
+    "test": null,
+    "build": null,
+    "lint": null
+  },
+  "conventions": [],
+  "gotchas": [
+    "New repository: there is no code yet. Do not assume a stack the approved design did not choose.",
+    "The task that scaffolds the project sets stack, commands (test, build, lint — each one a command it ran) and conventions in this file, in the same PR."
+  ]
+}
