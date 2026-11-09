@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Call
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -17,9 +16,6 @@ private const val TIMEOUT_SECONDS = 10L
 
 /** The path the backend answers the list on, under the base URL. */
 private const val LANGUAGES_PATH = "v1/languages"
-
-/** The header the backend reads the app token from (design decision D10). */
-private const val AUTHORIZATION = "Authorization"
 
 /**
  * The list of languages, read from the backend.
@@ -33,10 +29,10 @@ private const val AUTHORIZATION = "Authorization"
  * Nothing is remembered between calls. The picker asks again every time it
  * opens, which is what makes a language an operator has just added show up.
  *
- * The request carries this build's app token when it has one (D10). A backend
- * started with `APP_TOKEN` refuses an app-facing call without it, so a build
- * with no token would get 401 and an empty picker forever; a backend without
- * the switch ignores the header, so sending it costs nothing either way.
+ * The request is signed like every other call to the backend — see
+ * [signedWith], which holds that rule for all of them. What it costs to get
+ * wrong here is a picker: a build whose token a backend started with
+ * `APP_TOKEN` refuses gets 401, and then the picker is empty forever.
  */
 class BackendLanguageCatalogue(
     baseUrl: String = BackendConfig.baseUrl,
@@ -44,7 +40,7 @@ class BackendLanguageCatalogue(
     private val calls: Call.Factory = languagesHttpClient(),
 ) : LanguageCatalogueSource {
 
-    private val url = baseUrl.toHttpUrl().newBuilder().addPathSegments(LANGUAGES_PATH).build()
+    private val url = backendUrl(baseUrl, LANGUAGES_PATH)
 
     override suspend fun catalogue(): LanguageCatalogue = withContext(Dispatchers.IO) {
         calls.newCall(languagesRequest()).execute().use { response ->
@@ -56,12 +52,7 @@ class BackendLanguageCatalogue(
     }
 
     private fun languagesRequest(): Request =
-        Request.Builder().url(url).get()
-            .apply {
-                val token = appToken.trim()
-                if (token.isNotEmpty()) header(AUTHORIZATION, "Bearer $token")
-            }
-            .build()
+        Request.Builder().url(url).get().signedWith(appToken).build()
 }
 
 private fun languagesHttpClient(): OkHttpClient =
