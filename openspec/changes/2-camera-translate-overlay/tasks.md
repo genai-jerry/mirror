@@ -136,7 +136,7 @@ backend and the app.
 
 ## Task 8 — Text-region detection with automatic refresh
 
-- [x] Status: in review
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #11
 - Depends on: Task 7 (the app scaffold with the live camera screen)
