@@ -1,8 +1,5 @@
 package com.genaijerry.mirror
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.Preferences
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
@@ -30,10 +27,9 @@ fun malayalamToEnglish() = LanguageCatalogue(
     targets = listOf(LanguageOption("en-IN", "English")),
 )
 
-/** A store of chosen languages in a file of this test's own. */
+/**
+ * A store of chosen languages in a file of this test's own, built the way the
+ * app builds its own — so what the tests prove is what the app does.
+ */
 fun choiceStore(file: File, scope: CoroutineScope): LanguageChoiceStore =
-    LanguageChoiceStore(preferencesIn(file, scope))
-
-/** The DataStore behind [choiceStore] — separate so a test can close and reopen it. */
-fun preferencesIn(file: File, scope: CoroutineScope): DataStore<Preferences> =
-    PreferenceDataStoreFactory.create(scope = scope, produceFile = { file })
+    LanguageChoiceStore(languagePreferences(scope) { file })

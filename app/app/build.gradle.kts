@@ -10,6 +10,17 @@ plugins {
 val systemTestBackendUrl: String =
     (project.findProperty("mirror.systemTestBackendUrl") as String?) ?: "http://127.0.0.1:8000/"
 
+// The app token the backend may ask for (design decision D10). Empty is the
+// default and means the switch is off, which matches a backend with no
+// APP_TOKEN set. A token inside an installed app is a deterrent, not a
+// secret — it is a deployment fact, like the backend URL beside it, so it
+// belongs to the build and never to the source.
+fun appToken(property: String): String =
+    (project.findProperty(property) as String?).orEmpty().trim()
+
+val devAppToken: String = appToken("mirror.devAppToken")
+val systemTestAppToken: String = appToken("mirror.systemTestAppToken")
+
 android {
     namespace = "com.genaijerry.mirror"
     compileSdk = 37
@@ -32,12 +43,14 @@ android {
             dimension = "environment"
             // 10.0.2.2 is the host machine as seen from the Android emulator.
             buildConfigField("String", "BACKEND_BASE_URL", "\"http://10.0.2.2:8000/\"")
+            buildConfigField("String", "BACKEND_APP_TOKEN", "\"$devAppToken\"")
         }
         create("systemTest") {
             dimension = "environment"
             applicationIdSuffix = ".systemtest"
             versionNameSuffix = "-systemtest"
             buildConfigField("String", "BACKEND_BASE_URL", "\"$systemTestBackendUrl\"")
+            buildConfigField("String", "BACKEND_APP_TOKEN", "\"$systemTestAppToken\"")
         }
     }
 

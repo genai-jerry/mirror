@@ -7,6 +7,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -31,7 +32,11 @@ class BackendLanguageCatalogueTest {
         server.close()
     }
 
-    private fun catalogueUnderTest() = BackendLanguageCatalogue(baseUrl = server.url("/").toString())
+    private fun catalogueUnderTest(appToken: String = "") =
+        BackendLanguageCatalogue(baseUrl = server.url("/").toString(), appToken = appToken)
+
+    private fun emptyLists() =
+        MockResponse.Builder().code(200).body("""{"sources": [], "targets": []}""").build()
 
     @Test
     fun the_app_reads_the_languages_the_backend_lists() = runTest {
@@ -54,13 +59,39 @@ class BackendLanguageCatalogueTest {
 
     @Test
     fun the_app_asks_the_languages_endpoint_under_the_base_url() = runTest {
-        server.enqueue(MockResponse.Builder().code(200).body("""{"sources": [], "targets": []}""").build())
+        server.enqueue(emptyLists())
 
         catalogueUnderTest().catalogue()
 
         val asked = server.takeRequest()
         assertEquals("GET", asked.method)
         assertEquals("/v1/languages", asked.target)
+    }
+
+    @Test
+    fun the_request_carries_the_app_token_this_build_was_given() = runTest {
+        server.enqueue(emptyLists())
+
+        catalogueUnderTest(appToken = "the-app-token").catalogue()
+
+        assertEquals("Bearer the-app-token", server.takeRequest().headers["Authorization"])
+    }
+
+    @Test
+    fun a_build_with_no_app_token_sends_no_authorization_at_all() = runTest {
+        server.enqueue(emptyLists())
+
+        catalogueUnderTest(appToken = "").catalogue()
+
+        assertNull(server.takeRequest().headers["Authorization"])
+    }
+
+    @Test(expected = IOException::class)
+    fun a_backend_that_refuses_the_app_token_is_not_a_list_of_no_languages() = runTest {
+        // What a backend started with APP_TOKEN answers an unsigned call.
+        server.enqueue(MockResponse.Builder().code(401).body("""{"error": {"code": "unauthorized"}}""").build())
+
+        catalogueUnderTest().catalogue()
     }
 
     @Test

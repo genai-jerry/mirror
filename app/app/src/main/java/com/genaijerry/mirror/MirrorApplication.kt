@@ -1,6 +1,9 @@
 package com.genaijerry.mirror
 
 import android.app.Application
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Where the app's long-lived pieces are built.
@@ -12,11 +15,16 @@ import android.app.Application
  */
 open class MirrorApplication : Application() {
 
+    /** As long-lived as the app: what the preferences file is read and written on. */
+    private val fileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** The languages this session translates between, and what the picker offers. */
     open val languages: LanguageSelection by lazy {
         LanguageSelection(
             catalogues = BackendLanguageCatalogue(),
-            choices = LanguageChoiceStore(this),
+            choices = LanguageChoiceStore(
+                languagePreferences(fileScope) { languageChoiceFile() },
+            ),
         )
     }
 }

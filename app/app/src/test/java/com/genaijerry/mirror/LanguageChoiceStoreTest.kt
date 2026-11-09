@@ -51,4 +51,19 @@ class LanguageChoiceStoreTest {
 
         assertEquals(chosen, restored)
     }
+
+    @Test
+    fun a_file_the_app_cannot_read_costs_the_choice_and_nothing_more() = runTest {
+        val file = choiceFile()
+        file.parentFile?.mkdirs()
+        file.writeText("this is not a preferences file")
+        val scope = CoroutineScope(Dispatchers.IO + Job())
+
+        // Reading it must not throw: the app opens on the default pair instead
+        // of crashing every time until someone clears its data.
+        val pair = choiceStore(file, scope).chosenPair()
+
+        assertEquals(LanguagePair.Default, pair)
+        scope.cancel()
+    }
 }

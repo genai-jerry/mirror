@@ -18,6 +18,9 @@ private const val TIMEOUT_SECONDS = 10L
 /** The path the backend answers the list on, under the base URL. */
 private const val LANGUAGES_PATH = "v1/languages"
 
+/** The header the backend reads the app token from (design decision D10). */
+private const val AUTHORIZATION = "Authorization"
+
 /**
  * The list of languages, read from the backend.
  *
@@ -29,23 +32,36 @@ private const val LANGUAGES_PATH = "v1/languages"
  *
  * Nothing is remembered between calls. The picker asks again every time it
  * opens, which is what makes a language an operator has just added show up.
+ *
+ * The request carries this build's app token when it has one (D10). A backend
+ * started with `APP_TOKEN` refuses an app-facing call without it, so a build
+ * with no token would get 401 and an empty picker forever; a backend without
+ * the switch ignores the header, so sending it costs nothing either way.
  */
 class BackendLanguageCatalogue(
     baseUrl: String = BackendConfig.baseUrl,
+    private val appToken: String = BackendConfig.appToken,
     private val calls: Call.Factory = languagesHttpClient(),
 ) : LanguageCatalogueSource {
 
     private val url = baseUrl.toHttpUrl().newBuilder().addPathSegments(LANGUAGES_PATH).build()
 
     override suspend fun catalogue(): LanguageCatalogue = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).get().build()
-        calls.newCall(request).execute().use { response ->
+        calls.newCall(languagesRequest()).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("The backend answered $LANGUAGES_PATH with ${response.code}")
             }
             parseCatalogue(response.body.string())
         }
     }
+
+    private fun languagesRequest(): Request =
+        Request.Builder().url(url).get()
+            .apply {
+                val token = appToken.trim()
+                if (token.isNotEmpty()) header(AUTHORIZATION, "Bearer $token")
+            }
+            .build()
 }
 
 private fun languagesHttpClient(): OkHttpClient =
