@@ -88,7 +88,7 @@ answered from the cache, with no provider call.
 
 ## Task 5 — Shared recognition rate budget
 
-- [x] Status: in review
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #8
 - Depends on: Task 3 (the Sarvam recognition client)
