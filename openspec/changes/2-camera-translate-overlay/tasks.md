@@ -59,7 +59,7 @@ Malayalam is the first source language in the shipped configuration.
 
 ## Task 3 — Sarvam recognition client
 
-- [x] Status: in review
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #6
 - Depends on: Task 1 (the backend scaffold)
@@ -121,7 +121,7 @@ cache entry.
 
 ## Task 7 — App scaffold with the live camera screen
 
-- [x] Status: in review
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #10
 - Depends on: Task 1 (the backend scaffold — the two scaffolds edit
