@@ -11,8 +11,9 @@ The product has two halves in this one repository (design decision D1):
 
 ## Running the backend locally
 
-You need [uv](https://docs.astral.sh/uv/) — it installs Python 3.12 itself, so
-nothing else is a prerequisite.
+You need [uv](https://docs.astral.sh/uv/) — nothing else is a prerequisite.
+`backend/.python-version` pins Python 3.12, the version the service ships on,
+and uv installs that interpreter itself if the machine has no matching one.
 
 ```bash
 cd backend

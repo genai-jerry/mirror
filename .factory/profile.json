@@ -1,7 +1,7 @@
 {
   "repo": "genai-jerry/mirror",
   "estate_role": "A new product: Android app for real-time camera-based text translation using Sarvam OCR and translate",
-  "stack": "Two halves in one repository. backend/: Python 3.12, FastAPI on uvicorn, httpx for outgoing calls, pytest for tests, ruff for lint and format, dependencies in backend/pyproject.toml managed by uv (uv installs Python 3.12 itself). app/: Android, Kotlin, Jetpack Compose, CameraX, Gradle Kotlin DSL — not created yet; the app scaffold task adds it and extends commands here.",
+  "stack": "Two halves in one repository. backend/: Python 3.12, FastAPI on uvicorn, httpx for outgoing calls, pytest for tests, ruff for lint and format, dependencies in backend/pyproject.toml managed by uv. The minor version is pinned by backend/.python-version (3.12), which is what makes uv provision CPython 3.12 rather than whatever newer interpreter a runner happens to offer; the Docker image runs python:3.12-slim to match. app/: Android, Kotlin, Jetpack Compose, CameraX, Gradle Kotlin DSL — not created yet; the app scaffold task adds it and extends commands here.",
   "branches": {
     "default": "main",
     "staging": null
@@ -43,6 +43,7 @@
     "`make` is NOT installed on the factory's runners, so never call `make test`. The root Makefile wraps the same commands for a person at a terminal; the commands in this profile are the ones to run.",
     "`docker` is NOT installed on the factory's runners either. backend/Dockerfile is therefore unverified by any factory run — a change to it must be built by a person before it is trusted.",
     "The build command is `uv build`, which produces a wheel and a source distribution. It does not build the Docker image.",
+    "backend/.python-version pins Python 3.12 and backend/tests/test_runtime.py fails if the suite runs on anything else. A runner with only a newer Python will have uv download managed CPython 3.12; do not 'fix' that failure by widening the pin, because production runs python:3.12-slim. Changing the version means changing the design, the Dockerfile, .python-version, this profile and that test together.",
     "The app half does not exist yet. The app scaffold task creates app/ and extends `commands` here so test, build and lint cover both halves; building the app needs the Android SDK on the machine, which the factory's runners do not have.",
     "backend/config/defaults/languages.json does not exist yet — the language configuration task ships it. app.config.load_config raises ConfigError naming both directories it looked in, which is the expected answer until then.",
     "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration.",
