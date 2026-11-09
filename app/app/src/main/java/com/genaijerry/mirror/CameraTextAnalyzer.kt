@@ -125,8 +125,13 @@ private fun Bitmap.uprightBy(rotationDegrees: Int): Bitmap {
     return upright
 }
 
-/** This pixel rectangle as fractions of a frame [width] × [height] pixels. */
-private fun android.graphics.Rect.asNormalized(width: Int, height: Int): NormalizedRect =
+/**
+ * This pixel rectangle as fractions of a frame [width] × [height] pixels.
+ *
+ * Internal rather than private so the unit suite can pin it: this is the step
+ * that decides where on screen the app believes the text sits.
+ */
+internal fun android.graphics.Rect.asNormalized(width: Int, height: Int): NormalizedRect =
     NormalizedRect(
         x = left.toFloat() / width,
         y = top.toFloat() / height,

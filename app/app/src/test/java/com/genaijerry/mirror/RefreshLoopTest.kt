@@ -75,6 +75,21 @@ class RefreshLoopTest {
     }
 
     @Test
+    fun a_headline_that_changes_between_cycles_is_what_the_next_cycle_sends() {
+        tracker.onTextLocated(listOf(SOME_TEXT))
+        val translator = RecordingTranslator(
+            clock,
+            onCycle = { cycle -> if (cycle == 1) tracker.onTextLocated(listOf(OTHER_TEXT)) },
+        )
+
+        runBlocking { loopWith(translator).run(cycles = 2) }
+
+        assertEquals(listOf(0L, 5_000L), translator.startedAt)
+        assertRect(SOME_TEXT.padded(CropGeometry.PADDING_FRACTION), translator.sent[0].region)
+        assertRect(OTHER_TEXT.padded(CropGeometry.PADDING_FRACTION), translator.sent[1].region)
+    }
+
+    @Test
     fun the_middle_of_the_view_is_cropped_after_two_frames_with_no_text() {
         tracker.onTextLocated(emptyList())
         tracker.onTextLocated(emptyList())
@@ -135,8 +150,11 @@ class RefreshLoopTest {
         private val clock: TestClock,
         private val takesMillis: Long = 0L,
         private val fails: Boolean = false,
+        /** Run while the cycle is in flight, so a test can move the text. */
+        private val onCycle: (Int) -> Unit = {},
     ) : FrameTranslator {
         val startedAt = mutableListOf<Long>()
+        val sent = mutableListOf<FrameCrop>()
         var mostAtOnce = 0
             private set
 
@@ -144,7 +162,9 @@ class RefreshLoopTest {
 
         override suspend fun translate(crop: FrameCrop) {
             startedAt += clock.now
+            sent += crop
             inFlight++
+            onCycle(startedAt.size)
             mostAtOnce = maxOf(mostAtOnce, inFlight)
             try {
                 clock.now += takesMillis
@@ -157,5 +177,8 @@ class RefreshLoopTest {
 
     private companion object {
         val SOME_TEXT = NormalizedRect(x = 0.1f, y = 0.4f, width = 0.6f, height = 0.1f)
+
+        /** A different headline, somewhere else in the view. */
+        val OTHER_TEXT = NormalizedRect(x = 0.2f, y = 0.1f, width = 0.5f, height = 0.2f)
     }
 }
