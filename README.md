@@ -92,7 +92,7 @@ secrets and where things are (design decision D6).
 | File | Holds |
 |---|---|
 | `backend/config/defaults/languages.json` | The shipped source and target languages, and the named provider entry that reads and translates each source language. |
-| `backend/config/defaults/budget.json` | The shipped per-minute recognition and translation budgets. |
+| `backend/config/defaults/budget.json` | The shipped per-minute recognition and translation budgets, and how long a translation is kept in the cache (`translation_cache_seconds`, ten minutes; zero switches the cache off). |
 
 An operator's change is a whole replacement file of the same name in the
 override directory, so deleting it restores what the service shipped with. A

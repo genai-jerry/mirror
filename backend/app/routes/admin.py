@@ -39,6 +39,11 @@ router = APIRouter(
 #: wait deadline behave — belongs to the rate budget, not to this surface.
 BUDGET_COUNTS = ("recognition_per_minute", "translation_per_minute")
 BUDGET_FIELDS = (*BUDGET_COUNTS, "max_wait_seconds")
+#: Fields a budget file may leave out. The translation cache's lifetime has a
+#: default of its own (`app.translation_cache`), so a file written before the
+#: cache existed — and the system test data loader's low-budget set — is still
+#: a whole file.
+BUDGET_OPTIONAL_SECONDS = ("translation_cache_seconds",)
 
 
 @router.put("/config/languages")
@@ -114,7 +119,7 @@ def _refused(name: str, exc: ConfigError) -> ApiError:
 
 def _check_budget(payload: dict[str, Any]) -> None:
     """Every field the budget file holds, each one a number the budget can use."""
-    unknown = sorted(set(payload) - set(BUDGET_FIELDS))
+    unknown = sorted(set(payload) - set(BUDGET_FIELDS) - set(BUDGET_OPTIONAL_SECONDS))
     if unknown:
         raise ConfigError(f"{', '.join(unknown)} is not part of the budget configuration")
     missing = [name for name in BUDGET_FIELDS if name not in payload]
@@ -127,6 +132,9 @@ def _check_budget(payload: dict[str, Any]) -> None:
         value = payload[name]
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ConfigError(f"{name} must be a whole number of calls, at least 1")
-    wait = payload["max_wait_seconds"]
-    if isinstance(wait, bool) or not isinstance(wait, int | float) or wait < 0:
-        raise ConfigError("max_wait_seconds must be a number of seconds, 0 or more")
+    for name in ("max_wait_seconds", *BUDGET_OPTIONAL_SECONDS):
+        if name not in payload:
+            continue
+        seconds = payload[name]
+        if isinstance(seconds, bool) or not isinstance(seconds, int | float) or seconds < 0:
+            raise ConfigError(f"{name} must be a number of seconds, 0 or more")
