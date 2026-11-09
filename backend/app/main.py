@@ -20,6 +20,7 @@ from .errors import ApiError, api_error_handler, error_body
 from .logging_setup import configure_logging, log_event, set_request_id
 from .routes import admin, health, languages
 from .settings import Settings, load_settings
+from .translation import Translator
 
 REQUEST_ID_HEADER = "X-Request-Id"
 
@@ -34,6 +35,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="Reads text in a camera frame and answers with its translation.",
     )
     app.state.settings = resolved
+    # One translator per app, because the cache it owns is this process's whole
+    # translation cache (design decision D7). A test builds its own app, so it
+    # starts with an empty one.
+    app.state.translator = Translator(resolved)
     app.add_exception_handler(ApiError, api_error_handler)
 
     @app.middleware("http")
