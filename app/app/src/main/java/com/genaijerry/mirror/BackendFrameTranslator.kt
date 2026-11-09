@@ -86,7 +86,12 @@ class BackendFrameTranslator(
             .build()
 }
 
-private fun framesHttpClient(): OkHttpClient =
+/**
+ * The client every frame goes out on: bounded, because a cycle that waits
+ * forever is a cycle that never starts the next one. `internal` so a test can
+ * read the bound it ships with.
+ */
+internal fun framesHttpClient(): OkHttpClient =
     OkHttpClient.Builder()
         .callTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)

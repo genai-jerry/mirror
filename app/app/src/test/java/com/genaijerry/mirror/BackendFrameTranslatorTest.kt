@@ -2,9 +2,11 @@ package com.genaijerry.mirror
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -156,6 +158,38 @@ class BackendFrameTranslatorTest {
         )
 
         translatorUnderTest().translate(aCropOf(NormalizedRect.CENTRE))
+    }
+
+    @Test(expected = IOException::class)
+    fun a_backend_that_takes_the_frame_and_then_goes_quiet_is_a_failed_cycle() = runTest {
+        // The third way design.md says a cycle fails, beside a 429 and a 5xx:
+        // the backend says nothing at all. The spec's "does not respond within
+        // the expected time" is this one, and it only holds if the wait ends.
+        server.enqueue(MockResponse.Builder().code(200).headersDelay(1, TimeUnit.MINUTES).build())
+
+        BackendFrameTranslator(
+            languages = { LanguagePair.Default },
+            baseUrl = server.url("/").toString(),
+            appToken = "",
+            // The shipped client's own bound is 20 seconds, which is too long
+            // to wait for in a unit suite. The test below is what pins that
+            // number; this one proves the bound, whatever it is, ends the cycle
+            // in a throw rather than leaving it in flight for ever.
+            calls = OkHttpClient.Builder().callTimeout(250, TimeUnit.MILLISECONDS).build(),
+        ).translate(aCropOf(NormalizedRect.CENTRE))
+    }
+
+    @Test
+    fun the_backend_gets_twenty_seconds_to_answer_a_frame_and_no_longer() {
+        val shipped = framesHttpClient()
+
+        // design.md: "POST /v1/frames/translate (20-second request timeout)".
+        // The call timeout is the one that bounds the whole cycle; the other
+        // three bound the stages inside it.
+        assertEquals(20_000, shipped.callTimeoutMillis)
+        assertEquals(20_000, shipped.connectTimeoutMillis)
+        assertEquals(20_000, shipped.readTimeoutMillis)
+        assertEquals(20_000, shipped.writeTimeoutMillis)
     }
 
     @Test(expected = IOException::class)
