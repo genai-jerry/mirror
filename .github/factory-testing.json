@@ -1,0 +1,5 @@
+{
+  "_comment": "System tests (FACTORY.md §4b). With system_tests on, the Test Planner writes system-tests/test-plan.md and test-data.md into each epic's change folder between the Planner and the Architect, and opens one test(<epic>) sub-issue per case; the Dispatcher releases each case once the code it covers is assembled, and a human comments exactly 'Test Passed' or 'Test Failed' on it. mode 'gate' holds an epic short of factory:epic-ready until every case has passed; 'advisory' flips it and lists the open cases as unverified instead. An epic already past gate G2 when this landed has no plan — comment 'Plan tests' on it to write one.",
+  "system_tests": true,
+  "mode": "gate"
+}
