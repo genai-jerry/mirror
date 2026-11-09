@@ -73,7 +73,7 @@ leaves the backend.
 
 ## Task 4 — Translation client with the translation cache
 
-- [ ] Status: not started
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #7
 - Depends on: Task 2 (the language configuration and languages endpoint)
@@ -88,7 +88,7 @@ answered from the cache, with no provider call.
 
 ## Task 5 — Shared recognition rate budget
 
-- [ ] Status: not started
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #8
 - Depends on: Task 3 (the Sarvam recognition client)
@@ -136,7 +136,7 @@ backend and the app.
 
 ## Task 8 — Text-region detection with automatic refresh
 
-- [ ] Status: not started
+- [x] Status: on the epic branch
 - Repo: genai-jerry/mirror
 - Sub-issue: #11
 - Depends on: Task 7 (the app scaffold with the live camera screen)

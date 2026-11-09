@@ -118,6 +118,8 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.mlkit.text.recognition)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.okhttp)
 
