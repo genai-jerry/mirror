@@ -64,6 +64,39 @@ class RefreshLoopTest {
     }
 
     @Test
+    fun every_cycle_that_answers_is_reported_with_the_crop_it_answered_about() {
+        tracker.onTextLocated(listOf(SOME_TEXT))
+        val translator = RecordingTranslator(clock)
+        val answered = mutableListOf<Pair<NormalizedRect, String>>()
+
+        runBlocking {
+            loopWith(
+                translator,
+                onCycleTranslated = { crop, translation ->
+                    answered += crop.region to translation.translatedText
+                },
+            ).run(cycles = 2)
+        }
+
+        assertEquals(2, answered.size)
+        assertRect(SOME_TEXT.padded(CropGeometry.PADDING_FRACTION), answered.first().first)
+        assertEquals("Kerala", answered.first().second)
+    }
+
+    @Test
+    fun a_cycle_that_fails_is_reported_to_nobody_but_the_failure_hook() {
+        tracker.onTextLocated(listOf(SOME_TEXT))
+        val translator = RecordingTranslator(clock, fails = true)
+        var answered = 0
+
+        runBlocking {
+            loopWith(translator, onCycleTranslated = { _, _ -> answered++ }).run(cycles = 2)
+        }
+
+        assertEquals(0, answered)
+    }
+
+    @Test
     fun the_crop_keeps_space_around_the_text() {
         tracker.onTextLocated(listOf(SOME_TEXT))
         val translator = RecordingTranslator(clock)
@@ -125,6 +158,7 @@ class RefreshLoopTest {
     private fun loopWith(
         translator: FrameTranslator,
         crops: FrameCropSource = recordingCrops,
+        onCycleTranslated: (FrameCrop, FrameTranslation) -> Unit = { _, _ -> },
         onCycleFailed: (Throwable) -> Unit = {},
     ) = RefreshLoop(
         tracker = tracker,
@@ -132,6 +166,7 @@ class RefreshLoopTest {
         translator = translator,
         clock = { clock.now },
         pause = { clock.waitFor(it) },
+        onCycleTranslated = onCycleTranslated,
         onCycleFailed = onCycleFailed,
     )
 
@@ -160,7 +195,7 @@ class RefreshLoopTest {
 
         private var inFlight = 0
 
-        override suspend fun translate(crop: FrameCrop) {
+        override suspend fun translate(crop: FrameCrop): FrameTranslation {
             startedAt += clock.now
             sent += crop
             inFlight++
@@ -169,6 +204,7 @@ class RefreshLoopTest {
             try {
                 clock.now += takesMillis
                 if (fails) error("the backend was not reachable")
+                return aTranslationOf("Kerala in Malayalam", "Kerala")
             } finally {
                 inFlight--
             }

@@ -23,8 +23,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.genaijerry.mirror.CameraTextAnalyzer
 import com.genaijerry.mirror.CropGeometry
+import com.genaijerry.mirror.FrameCrop
+import com.genaijerry.mirror.FrameTranslation
 import com.genaijerry.mirror.FrameTranslator
-import com.genaijerry.mirror.LoggingFrameTranslator
 import com.genaijerry.mirror.R
 import com.genaijerry.mirror.RefreshLoop
 import com.genaijerry.mirror.TextAnchor
@@ -47,24 +48,29 @@ private const val ANALYSIS_SHORT_EDGE_PX = 720
  *
  * Two things run while this is on screen. The camera's frames go to the
  * on-device detector, which keeps [onAnchorChanged] told where the text sits,
- * so an overlay can follow it. And the refresh cycle runs by itself — every
+ * so the overlay can follow it. And the refresh cycle runs by itself — every
  * [refreshIntervalMillis] at the earliest, one at a time — cutting the text
- * out of the newest frame and handing it to [translator].
+ * out of the newest frame, handing it to [translator] and reporting what came
+ * back to [onTranslated].
  *
- * @param translator where each crop goes. The default only writes a log line;
- *   the translated overlay task passes the backend client in.
+ * @param translator where each crop goes to be read and translated.
+ * @param onTranslated told the crop and the translation of every cycle that
+ *   answered. A cycle that failed is only logged: keeping the last good
+ *   overlay through a failure means telling nobody about it.
  */
 @Composable
 fun CameraPreview(
+    translator: FrameTranslator,
     modifier: Modifier = Modifier,
-    translator: FrameTranslator = LoggingFrameTranslator,
     onAnchorChanged: (TextAnchor?) -> Unit = {},
+    onTranslated: (FrameCrop, FrameTranslation) -> Unit = { _, _ -> },
     refreshIntervalMillis: Long = RefreshLoop.DEFAULT_INTERVAL_MILLIS,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val description = stringResource(R.string.camera_preview_description)
 
     val reportAnchor = rememberUpdatedState(onAnchorChanged)
+    val reportTranslation = rememberUpdatedState(onTranslated)
     val tracker = remember { TextRegionTracker(onAnchorChanged = { reportAnchor.value(it) }) }
     val analyzer = remember { CameraTextAnalyzer(tracker) }
     val analysisThread = remember { Executors.newSingleThreadExecutor() }
@@ -86,6 +92,9 @@ fun CameraPreview(
                 crops = analyzer,
                 translator = translator,
                 minimumIntervalMillis = refreshIntervalMillis,
+                onCycleTranslated = { crop, translation ->
+                    reportTranslation.value(crop, translation)
+                },
                 onCycleFailed = { failure -> Log.w(TAG, "A refresh cycle failed", failure) },
             ).run()
         }

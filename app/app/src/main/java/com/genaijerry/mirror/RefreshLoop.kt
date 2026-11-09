@@ -18,9 +18,10 @@ import kotlinx.coroutines.delay
  *    longer than the interval is followed immediately by the next one; a quick
  *    cycle waits out the rest of the interval.
  *
- * A cycle that throws is a finished cycle: [onCycleFailed] is told and the
- * loop carries on. The overlay keeping its last good translation through a
- * failure is the overlay's rule, not this loop's.
+ * A cycle that ends is a cycle the loop reports and then leaves alone: one
+ * that answered goes to [onCycleTranslated], one that threw goes to
+ * [onCycleFailed], and the loop carries on either way. What to put on screen
+ * for each is the overlay's rule, not this loop's.
  *
  * @param clock the source of "now", in milliseconds. A test supplies its own.
  * @param pause how the loop waits. A test supplies its own, so the whole loop
@@ -33,6 +34,7 @@ class RefreshLoop(
     private val minimumIntervalMillis: Long = DEFAULT_INTERVAL_MILLIS,
     private val clock: () -> Long = System::currentTimeMillis,
     private val pause: suspend (Long) -> Unit = { delay(it) },
+    private val onCycleTranslated: (FrameCrop, FrameTranslation) -> Unit = { _, _ -> },
     private val onCycleFailed: (Throwable) -> Unit = {},
 ) {
     /**
@@ -58,7 +60,7 @@ class RefreshLoop(
         try {
             val anchor = tracker.anchor ?: return
             val crop = crops.crop(anchor.region.padded(CropGeometry.PADDING_FRACTION)) ?: return
-            translator.translate(crop)
+            onCycleTranslated(crop, translator.translate(crop))
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (failure: Throwable) {
