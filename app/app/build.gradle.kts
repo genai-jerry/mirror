@@ -105,6 +105,9 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.mlkit.text.recognition)
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
