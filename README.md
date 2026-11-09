@@ -6,8 +6,9 @@ The product has two halves in this one repository (design decision D1):
 | Folder | What it is |
 |---|---|
 | `backend/` | The translate proxy service — Python 3.12, FastAPI. It holds the Sarvam key, the rate budget and the translation cache. |
-| `app/` | The Android app — Kotlin, Jetpack Compose, CameraX. Added by the app scaffold task. |
+| `app/` | The Android app — Kotlin, Jetpack Compose, CameraX. |
 | `Makefile` | `test`, `build` and `lint` for both halves. |
+| `scripts/gate.sh` | What those three actually run. The factory calls it directly. |
 
 ## Running the backend locally
 
@@ -31,9 +32,41 @@ uv run ruff check . && uv run ruff format --check .
 uv build
 ```
 
-From the repository root, `make test`, `make lint` and `make build` run the
-same commands. The factory's runners call them directly, because `make` is not
+## Building the app
+
+You need a JDK 17 or later and an Android SDK with **platform 37.2** and
+**build-tools 37.0.0**. Android Studio installs both; on a bare machine use
+the SDK command-line tools and point `ANDROID_HOME` at the SDK (or write
+`sdk.dir=/path/to/sdk` into `app/local.properties`). Gradle itself comes from
+the wrapper, so there is nothing to install for it.
+
+```bash
+cd app
+./gradlew testDevDebugUnitTest   # the unit suite — Robolectric, no device needed
+./gradlew assembleDebug          # both flavours' debug APKs
+./gradlew lint                   # Android lint
+```
+
+The app is built in two flavours, which differ only in the backend they talk
+to (design decision D5):
+
+| Flavour | Backend |
+|---|---|
+| `dev` | `http://10.0.2.2:8000/` — the local backend, as the emulator sees the host machine |
+| `systemTest` | `http://127.0.0.1:8000/` by default. Point it elsewhere with `-Pmirror.systemTestBackendUrl=http://host:8000/` |
+
+## Both halves at once
+
+From the repository root, `make test`, `make lint` and `make build` run
+`scripts/gate.sh`, which does the backend half and then the app half. The
+factory's runners call `scripts/gate.sh` directly, because `make` is not
 installed there.
+
+The app half needs the Android SDK. Where there is none the gate says
+`app: test SKIPPED` and passes on the backend result alone — so read the
+output rather than only the exit code. `MIRROR_APP_GATE=required` turns that
+skip into a failure, which is what a machine that is meant to have the SDK
+should set.
 
 ## Running the backend in Docker
 
