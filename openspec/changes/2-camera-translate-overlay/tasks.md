@@ -43,7 +43,7 @@ and `conventions` in `.factory/profile.json`.
 
 ## Task 2 — Language configuration and the languages endpoint
 
-- [ ] Status: not started
+- [x] Status: in review
 - Repo: genai-jerry/mirror
 - Sub-issue: #5
 - Depends on: Task 1 (the backend scaffold)
