@@ -1,0 +1,14 @@
+{
+  "set": "DS-3",
+  "name": "Low recognition budget configuration",
+  "synthetic": true,
+  "how_to_use": "Apply with the load command in test-data.md § Loading before ST-6; unload afterwards to restore the configured production budget.",
+  "records": [
+    {
+      "id": "low-budget",
+      "recognition_requests_per_minute": 2,
+      "translation_requests_per_minute": 60,
+      "note": "Low enough that the app's own refresh cadence exhausts the recognition budget inside a minute, without hammering Sarvam's real limits."
+    }
+  ]
+}
