@@ -471,6 +471,16 @@ class BuildAndApk(unittest.TestCase):
                 for key, value in values.items():
                     self.assertEqual(seen.get(key), value, (shell, key))
 
+    def test_sdk_setup_names_its_packages(self):
+        # Bug #93: without a list the action asks for the retired `tools` package.
+        packages = (step(self.wf, "Set up Android SDK").get("with") or {}).get("packages")
+        self.assertIsInstance(packages, str, "SDK setup must name its packages")
+        self.assertEqual(packages.split(), ["platform-tools"])
+
+    def test_sdk_setup_never_asks_for_the_retired_tools_package(self):
+        packages = (step(self.wf, "Set up Android SDK").get("with") or {}).get("packages") or ""
+        self.assertNotIn("tools", packages.split())
+
     def test_unit_suite_is_the_gate_suite(self):
         self.assertIn("./gradlew testDevDebugUnitTest", step(self.wf, "Unit tests")["run"])
 
