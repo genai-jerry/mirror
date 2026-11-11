@@ -97,7 +97,7 @@ appears in the log.
 
 ## Task 4 — Setup guide for the deployment
 
-- [ ] Status: not started
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #42
 - Depends on: Task 3 (the deploy job)
