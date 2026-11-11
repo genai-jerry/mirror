@@ -1,0 +1,24 @@
+{
+  "set": "DS-1",
+  "name": "Malayalam display headlines",
+  "synthetic": true,
+  "how_to_use": "Display one record's text_ml at a time, full-screen at a large font size on a second screen. Compare the app's overlay against reference_en by meaning, not exact wording.",
+  "records": [
+    {
+      "id": "H1",
+      "text_ml": "ഇന്ന് ശക്തമായ മഴയ്ക്ക് സാധ്യത",
+      "reference_en": "Chance of heavy rain today"
+    },
+    {
+      "id": "H2",
+      "text_ml": "നഗരത്തിൽ പുതിയ പാലം തുറന്നു",
+      "reference_en": "New bridge opened in the city"
+    },
+    {
+      "id": "H3",
+      "text_ml": "സ്കൂളുകൾക്ക് നാളെ അവധി",
+      "reference_en": "Holiday for schools tomorrow",
+      "note": "Reserved for ST-8: must not have been shown to the app before the provider-change step, so the cache cannot answer it."
+    }
+  ]
+}
