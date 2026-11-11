@@ -217,7 +217,7 @@ jobs:
 | 4 | `Required settings present` | See below |
 | 5 | `Version` | Computes the version (D9) and writes `version_code`, `version_name`, `apk_name` to `$GITHUB_OUTPUT` |
 | 6 | `Set up JDK` | `actions/setup-java@v4`, `distribution: temurin`, `java-version: "21"` (the profile's JDK 21 gotcha) |
-| 7 | `Set up Android SDK` | `android-actions/setup-android@v3`, which accepts the licences. The Android Gradle plugin then downloads platform 37.2 and build-tools 37.0.0 itself |
+| 7 | `Set up Android SDK` | `android-actions/setup-android@v3` with `packages: platform-tools`, which accepts the licences. The list is explicit because the action's default asks for the retired `tools` package (bug #93). The Android Gradle plugin then downloads platform 37.2 and build-tools 37.0.0 itself |
 | 8 | `Set up Gradle` | `gradle/actions/setup-gradle@v4`, for the wrapper and the cache |
 | 9 | `Unit tests` | `cd app && ./gradlew testDevDebugUnitTest` (D10) |
 | 10 | `Signing key` | `umask 077`; `printf '%s' "$APP_SIGNING_KEYSTORE" \| base64 -d > "$RUNNER_TEMP/staging-signing.p12"`; fails with `::error::Secret APP_SIGNING_KEYSTORE is not valid base64` when decoding fails |

@@ -159,6 +159,18 @@ GitHub on an Android phone downloads the APK from the newest pre-release
 and installs it, including installing a newer build over an older one.
 Written so an owner needs to read neither the workflow nor the build file.
 
+## Fix — SDK setup asks for the retired `tools` package (bug #93)
+
+- [x] Status: done
+- Repo: genai-jerry/mirror
+- Sub-issue: #94
+- Depends on: Task 1 (the build workflow)
+
+The `Set up Android SDK` step names its package list (`platform-tools`)
+instead of taking the action's default, which asks for the retired `tools`
+package that the runner's sdkmanager no longer offers. The workflow tests
+fail if the list is missing or names `tools`.
+
 ## Scenario coverage
 
 Every scenario in `specs/staging-app-distribution/spec.md` is served by at
