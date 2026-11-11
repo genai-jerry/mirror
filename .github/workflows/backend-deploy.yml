@@ -1,8 +1,8 @@
 # Backend deploy (epic #37, openspec/changes/37-backend-deployment/design.md).
 # This file holds the triggers and the `build` job, which builds the backend's
-# Docker image and publishes it to GitHub Container Registry. The `deploy` job,
-# added by the deploy task, `needs: build`, so a failed build never contacts a
-# server.
+# Docker image and publishes it to GitHub Container Registry. The `deploy` job
+# `needs: build`, so a failed build never contacts a server; it then starts the
+# published image on the branch's server and checks its health.
 name: Backend deploy
 
 on:
@@ -79,3 +79,136 @@ jobs:
           tags: ${{ steps.image.outputs.image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to the branch's server
+    needs: build
+    runs-on: ubuntu-latest
+    # D4: staging -> the `staging` environment, main -> `production`.
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    # D13: one deploy per environment at a time; queued, never cancelled.
+    concurrency:
+      group: backend-deploy-${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      IMAGE: ${{ needs.build.outputs.image }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/mirror' }}
+    # Never `set -x`, never echo a secret. GitHub masks secret values in the
+    # log; this job does not rely on that alone.
+    steps:
+      - name: Required settings present
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          APP_TOKEN: ${{ secrets.APP_TOKEN }}
+        run: |
+          failed=0
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS SARVAM_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret ${name} is not set in the ${ENVIRONMENT} environment"
+              failed=1
+            fi
+          done
+          # The .env on the server holds each setting in single quotes on one
+          # line, so a quote or a line break would corrupt it.
+          for name in SARVAM_API_KEY ADMIN_TOKEN APP_TOKEN; do
+            case "${!name}" in
+              *"'"* | *$'\n'* | *$'\r'*)
+                echo "::error::Secret ${name} in the ${ENVIRONMENT} environment contains a quote or a line break"
+                failed=1
+                ;;
+            esac
+          done
+          if [ -z "$IMAGE" ]; then
+            echo "::error::The build job did not report an image"
+            failed=1
+          fi
+          exit "$failed"
+
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: SSH set-up
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Every ssh and scp below goes through this alias, so the address,
+          # user and port never appear on a command line or in the log.
+          {
+            echo "Host deploy-server"
+            echo "  HostName ${DEPLOY_HOST}"
+            echo "  User ${DEPLOY_USER}"
+            echo "  Port ${DEPLOY_PORT:-22}"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  UserKnownHostsFile ~/.ssh/known_hosts"
+            echo "  StrictHostKeyChecking yes"
+            echo "  BatchMode yes"
+            echo "  ConnectTimeout 20"
+          } > ~/.ssh/config
+
+      - name: Copy files to the server
+        run: |
+          printf -v qdir '%q' "$DEPLOY_DIR"
+          # The directory is quoted with %q above, so expanding it here is intended.
+          # shellcheck disable=SC2029
+          ssh deploy-server "mkdir -p ${qdir}"
+          scp deploy/compose.yaml deploy/remote-deploy.sh "deploy-server:${DEPLOY_DIR}/"
+
+      - name: Write the server's .env
+        env:
+          SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          APP_TOKEN: ${{ secrets.APP_TOKEN }}
+        run: |
+          # D9: through standard input into a file only the deploy user can read.
+          printf -v qdir '%q' "$DEPLOY_DIR"
+          printf "BACKEND_IMAGE='%s'\nSARVAM_API_KEY='%s'\nADMIN_TOKEN='%s'\nAPP_TOKEN='%s'\n" \
+            "$IMAGE" "$SARVAM_API_KEY" "$ADMIN_TOKEN" "$APP_TOKEN" \
+            | {
+              # shellcheck disable=SC2029
+              ssh deploy-server "umask 077; cat > ${qdir}/.env && chmod 600 ${qdir}/.env"
+            }
+
+      - name: Deploy and check health
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          # D6: the run's token reaches the server on standard input only.
+          printf -v qdir '%q' "$DEPLOY_DIR"
+          printf -v quser '%q' "$REGISTRY_USER"
+          printf '%s\n' "$REGISTRY_TOKEN" \
+            | {
+              # shellcheck disable=SC2029
+              ssh deploy-server "bash ${qdir}/remote-deploy.sh ${qdir} ${quser}"
+            }
+
+      - name: Summary
+        run: echo "Deployed ${IMAGE} to ${ENVIRONMENT}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report a failed deploy
+        if: failure()
+        run: |
+          echo "::error::Deploy of ${IMAGE:-the image} to ${ENVIRONMENT} failed"
+          echo "Deploy of ${IMAGE:-the image} to ${ENVIRONMENT} failed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/config
