@@ -1,0 +1,176 @@
+# Staging app (epic #61, openspec/changes/61-staging-android-app/design.md).
+# This file holds the triggers and the `build` job, which runs the app's unit
+# suite and builds the staging flavour of the app, signed with the test key.
+# The APK is kept as an artifact for the `publish` job (the pre-release task).
+#
+# Never rename this file: the version number is built from the run number
+# (D9), and a rename restarts it, so new builds would not install as updates.
+name: Staging app
+
+on:
+  push:
+    branches: [staging]
+    # D2: only app changes or changes to this file build the app. Documents,
+    # the backend, the deployment files and the factory's files do not.
+    paths:
+      - "app/**"
+      - ".github/workflows/staging-app.yml"
+  # D2: "Run workflow" uses GitHub's own branch picker; no inputs. The first
+  # step refuses every branch but staging.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-app
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and sign the staging app
+    runs-on: ubuntu-latest
+    # D3: the staging environment holds the backend's settings and the app's.
+    environment: staging
+    permissions:
+      contents: read
+    outputs:
+      version_code: ${{ steps.version.outputs.version_code }}
+      version_name: ${{ steps.version.outputs.version_name }}
+      apk_name: ${{ steps.version.outputs.apk_name }}
+    steps:
+      - name: Only staging
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ "$BRANCH" != "staging" ]; then
+            echo "::error::Staging app builds run only from staging"
+            exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: App present
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ ! -f app/gradlew ] || [ ! -f app/app/build.gradle.kts ]; then
+            echo "::error::app/ is not on ${BRANCH}; the mirror v1 app must reach staging first"
+            exit 1
+          fi
+
+      # Names every missing secret, and never prints a value (D3, D4).
+      - name: Required settings present
+        env:
+          APP_BACKEND_URL: ${{ secrets.APP_BACKEND_URL }}
+          APP_TOKEN: ${{ secrets.APP_TOKEN }}
+          APP_SIGNING_KEYSTORE: ${{ secrets.APP_SIGNING_KEYSTORE }}
+          APP_SIGNING_STORE_PASSWORD: ${{ secrets.APP_SIGNING_STORE_PASSWORD }}
+          APP_SIGNING_KEY_ALIAS: ${{ secrets.APP_SIGNING_KEY_ALIAS }}
+          APP_SIGNING_KEY_PASSWORD: ${{ secrets.APP_SIGNING_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in APP_BACKEND_URL APP_SIGNING_KEYSTORE APP_SIGNING_STORE_PASSWORD APP_SIGNING_KEY_ALIAS APP_SIGNING_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret ${name} is not set in the staging environment"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          url_re="^https?://[^/[:space:]'\"\\\\]+(/[^[:space:]'\"\\\\]*)?$"
+          if [[ "$APP_BACKEND_URL" == *$'\n'* ]] || ! [[ "$APP_BACKEND_URL" =~ $url_re ]]; then
+            echo "::error::Secret APP_BACKEND_URL must be a URL starting with http:// or https://"
+            exit 1
+          fi
+          case "$APP_TOKEN" in
+            *\'* | *\"* | *\\* | *$'\n'* | *$'\r'*)
+              echo "::error::Secret APP_TOKEN contains a quote, a backslash or a line break"
+              exit 1
+              ;;
+          esac
+
+      # D9: run number * 100 + run attempt, so every build is higher than the last.
+      - name: Version
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [ "$RUN_ATTEMPT" -gt 99 ]; then
+            echo "::error::Run attempt ${RUN_ATTEMPT} is above 99; start a new run instead"; exit 1
+          fi
+          code=$(( RUN_NUMBER * 100 + RUN_ATTEMPT ))
+          echo "version_code=${code}"                     >> "$GITHUB_OUTPUT"
+          echo "version_name=0.1.0-staging.${code}"       >> "$GITHUB_OUTPUT"
+          echo "apk_name=mirror-staging-${code}.apk"      >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # D10: the gate's own suite. A failure stops the run before the build.
+      - name: Unit tests
+        run: |
+          cd app && ./gradlew testDevDebugUnitTest
+
+      # D8: the key lives on the runner's disk for this job only.
+      - name: Signing key
+        env:
+          APP_SIGNING_KEYSTORE: ${{ secrets.APP_SIGNING_KEYSTORE }}
+        run: |
+          umask 077
+          if ! printf '%s' "$APP_SIGNING_KEYSTORE" | base64 -d > "$RUNNER_TEMP/staging-signing.p12" 2>/dev/null; then
+            rm -f "$RUNNER_TEMP/staging-signing.p12"
+            echo "::error::Secret APP_SIGNING_KEYSTORE is not valid base64"
+            exit 1
+          fi
+
+      # D6: every value reaches Gradle as an environment variable, never as -P.
+      - name: Build the staging app
+        env:
+          ORG_GRADLE_PROJECT_mirror.stagingBackendUrl: ${{ secrets.APP_BACKEND_URL }}
+          ORG_GRADLE_PROJECT_mirror.stagingAppToken: ${{ secrets.APP_TOKEN }}
+          ORG_GRADLE_PROJECT_mirror.stagingKeystoreFile: ${{ runner.temp }}/staging-signing.p12
+          ORG_GRADLE_PROJECT_mirror.stagingStorePassword: ${{ secrets.APP_SIGNING_STORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_mirror.stagingKeyAlias: ${{ secrets.APP_SIGNING_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_mirror.stagingKeyPassword: ${{ secrets.APP_SIGNING_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_mirror.stagingVersionCode: ${{ steps.version.outputs.version_code }}
+        run: |
+          cd app && ./gradlew assembleStagingRelease
+
+      # D8: without the signing properties the build is unsigned, and Gradle
+      # names that APK differently, so a missing file means "not signed".
+      - name: APK signed
+        env:
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+        run: |
+          apk=app/app/build/outputs/apk/staging/release/app-staging-release.apk
+          if [ ! -f "$apk" ]; then
+            echo "::error::The staging APK was not signed"
+            exit 1
+          fi
+          cp "$apk" "$RUNNER_TEMP/$APK_NAME"
+
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-apk
+          path: ${{ runner.temp }}/${{ steps.version.outputs.apk_name }}
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Clean up
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/staging-signing.p12"
