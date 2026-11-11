@@ -1,4 +1,5 @@
-"""Tests for .github/workflows/staging-app.yml, the build job (epic #61, task #64).
+"""Tests for .github/workflows/staging-app.yml (epic #61): the build job
+(task #64) and the publish job (task #65).
 
 The factory's runners have no Android SDK, so these tests prove what can be
 proved without one (design.md D14):
@@ -8,7 +9,10 @@ proved without one (design.md D14):
 * the build job's own shell steps, run with bash under the inputs that
   matter (branch, missing app, missing or malformed secrets, run number);
 * the step order and the rules that keep secrets out of the log and stop
-  the run on any failure.
+  the run on any failure;
+* the publish job: it needs the build job, creates a pre-release that is
+  never the latest release, and its notes name only the commit, the version
+  and the run (checked with a fake `gh` that records its arguments).
 
 A person proves the real build by hand (the guide's first-build section).
 
@@ -616,6 +620,198 @@ class FailuresStopTheRun(unittest.TestCase):
         self.assertEqual(
             self.wf["concurrency"], {"group": "staging-app", "cancel-in-progress": False}
         )
+
+
+PUBLISH_STEP_ORDER = ["Fetch the APK", "Create the pre-release", "Summary"]
+
+SHA = "0123456789abcdef0123456789abcdef01234567"
+RUN_URL = "https://github.com/genai-jerry/mirror/actions/runs/424242"
+
+# The build job's outputs and the run's own values, as the publish job sees them.
+PUBLISH_ENV = {
+    "GH_TOKEN": "gh-token-synthetic-5e2a",
+    "SHA": SHA,
+    "REPO": "genai-jerry/mirror",
+    "RUN_URL": RUN_URL,
+    "VERSION_CODE": "701",
+    "VERSION_NAME": "0.1.0-staging.701",
+    "APK_NAME": "mirror-staging-701.apk",
+}
+
+# A stand-in for `gh` that writes each argument to a file, NUL-separated.
+FAKE_GH = """#!/bin/sh
+for a in "$@"; do printf '%s\\0' "$a"; done > "$GH_ARGS_FILE"
+"""
+
+
+class PublishJob(unittest.TestCase):
+    """Scenarios: Failed build publishes nothing (the publish job needs the
+    build job); Not marked as a production release; Build log and notes (the
+    notes)."""
+
+    def setUp(self):
+        self.wf = load_workflow()
+        self.job = self.wf["jobs"]["publish"]
+
+    def test_needs_the_build_and_has_no_condition(self):
+        self.assertEqual(self.job["needs"], "build")
+        self.assertNotIn("if", self.job)
+        for s in self.job["steps"]:
+            self.assertNotIn("if", s, s.get("name"))
+
+    def test_jobs(self):
+        self.assertEqual(list(self.wf["jobs"]), ["build", "publish"])
+
+    def test_permissions(self):
+        self.assertEqual(self.job["permissions"], {"contents": "write"})
+        self.assertEqual(self.wf["permissions"], {"contents": "read"})
+        self.assertEqual(self.wf["jobs"]["build"]["permissions"], {"contents": "read"})
+
+    def test_never_sees_a_secret(self):
+        self.assertNotIn("environment", self.job)
+        dumped = yaml.safe_dump(self.job)
+        self.assertNotIn("secrets.", dumped)
+        for name in GOOD_SECRETS:
+            self.assertNotIn(name, dumped)
+        self.assertEqual(step(self.wf, "Create the pre-release", "publish")["env"]["GH_TOKEN"],
+                         "${{ github.token }}")
+
+    def test_step_order(self):
+        self.assertEqual([s.get("name") for s in self.job["steps"]], PUBLISH_STEP_ORDER)
+
+    def test_fetches_the_apk_the_build_kept(self):
+        s = step(self.wf, "Fetch the APK", "publish")
+        self.assertTrue(s["uses"].startswith("actions/download-artifact@"))
+        self.assertEqual(s["with"], {"name": "staging-apk", "path": "${{ runner.temp }}/apk"})
+
+    def test_create_step_reads_the_build_outputs_and_the_run(self):
+        env = step(self.wf, "Create the pre-release", "publish")["env"]
+        self.assertEqual(
+            env,
+            {
+                "GH_TOKEN": "${{ github.token }}",
+                "SHA": "${{ github.sha }}",
+                "REPO": "${{ github.repository }}",
+                "RUN_URL": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "VERSION_CODE": "${{ needs.build.outputs.version_code }}",
+                "VERSION_NAME": "${{ needs.build.outputs.version_name }}",
+                "APK_NAME": "${{ needs.build.outputs.apk_name }}",
+            },
+        )
+
+    def test_create_step_flags(self):
+        run = step(self.wf, "Create the pre-release", "publish")["run"]
+        self.assertIn("--prerelease", run)
+        self.assertIn("--latest=false", run)
+        self.assertNotRegex(run, r"--latest(?!=false)")
+        self.assertNotIn("--draft", run)
+        self.assertIn('tag="staging-app-${VERSION_CODE}"', run)
+
+    def run_create(self):
+        s = step(self.wf, "Create the pre-release", "publish")
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(subprocess.run, ["rm", "-rf", tmp])
+        bindir = os.path.join(tmp, "bin")
+        os.makedirs(bindir)
+        gh = os.path.join(bindir, "gh")
+        with open(gh, "w") as fh:
+            fh.write(FAKE_GH)
+        os.chmod(gh, 0o755)
+        args_file = os.path.join(tmp, "gh.args")
+        env = dict(
+            PUBLISH_ENV,
+            RUNNER_TEMP=tmp,
+            GH_ARGS_FILE=args_file,
+            PATH=bindir + os.pathsep + os.environ["PATH"],
+        )
+        r = run_step(s["run"], env, tmp)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(args_file) as fh:
+            args = fh.read().split("\0")[:-1]
+        return tmp, args
+
+    def opt(self, args, name):
+        self.assertEqual(args.count(name), 1, name)
+        return args[args.index(name) + 1]
+
+    def test_creates_the_pre_release(self):
+        tmp, args = self.run_create()
+        self.assertEqual(args[:4], [
+            "release", "create", "staging-app-701",
+            os.path.join(tmp, "apk", "mirror-staging-701.apk"),
+        ])
+        self.assertEqual(self.opt(args, "--repo"), "genai-jerry/mirror")
+        self.assertEqual(self.opt(args, "--target"), SHA)
+        self.assertEqual(self.opt(args, "--title"), "Mirror staging 0.1.0-staging.701")
+        self.assertIn("--prerelease", args)
+        self.assertIn("--latest=false", args)
+        self.assertNotIn("--latest", args)
+        self.assertNotIn("--draft", args)
+
+    def test_attaches_exactly_one_apk(self):
+        _, args = self.run_create()
+        positional = [a for a in args[2:] if not a.startswith("--")]
+        values = {self.opt(args, o) for o in ("--repo", "--target", "--title", "--notes")}
+        assets = [a for a in positional if a not in values][1:]
+        self.assertEqual(len(assets), 1, assets)
+        self.assertTrue(assets[0].endswith(".apk"))
+
+    def test_notes_name_the_commit_the_version_and_the_run_only(self):
+        _, args = self.run_create()
+        notes = self.opt(args, "--notes")
+        self.assertEqual(
+            notes,
+            "Staging build of the Mirror app, for testers.\n\n"
+            "Version: 0.1.0-staging.701 (701)\n"
+            "Commit: %s\n"
+            "Built by: %s\n\n"
+            "Install it on an Android phone as docs/staging-app.md describes." % (SHA, RUN_URL),
+        )
+        self.assertNotIn(PUBLISH_ENV["GH_TOKEN"], " ".join(args))
+        for value in GOOD_SECRETS.values():
+            self.assertNotIn(value, notes)
+
+    def test_secret_values_in_the_environment_never_reach_gh(self):
+        # Even if a secret leaked into the job's environment, nothing reads it.
+        s = step(self.wf, "Create the pre-release", "publish")
+        for name in GOOD_SECRETS:
+            self.assertNotIn(name, s["run"])
+
+    def test_summary(self):
+        s = step(self.wf, "Summary", "publish")
+        self.assertEqual(s["env"], {
+            "SHA": "${{ github.sha }}",
+            "VERSION_NAME": "${{ needs.build.outputs.version_name }}",
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = os.path.join(tmp, "summary")
+            r = run_step(s["run"], {"SHA": SHA, "VERSION_NAME": "0.1.0-staging.701",
+                                    "GITHUB_STEP_SUMMARY": summary}, tmp)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(summary) as fh:
+                self.assertEqual(fh.read(), "Published Mirror staging 0.1.0-staging.701 for 0123456\n")
+
+    def test_failed_gh_fails_the_step(self):
+        s = step(self.wf, "Create the pre-release", "publish")
+        with tempfile.TemporaryDirectory() as tmp:
+            bindir = os.path.join(tmp, "bin")
+            os.makedirs(bindir)
+            gh = os.path.join(bindir, "gh")
+            with open(gh, "w") as fh:
+                fh.write("#!/bin/sh\nexit 1\n")
+            os.chmod(gh, 0o755)
+            env = dict(PUBLISH_ENV, RUNNER_TEMP=tmp, PATH=bindir + os.pathsep + os.environ["PATH"])
+            self.assertNotEqual(run_step(s["run"], env, tmp).returncode, 0)
+
+    def test_every_shell_step_parses(self):
+        for s in self.job["steps"]:
+            if "run" in s:
+                r = subprocess.run(["bash", "-n", "-c", s["run"]], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, (s.get("name"), r.stderr))
+
+    def test_no_step_traces_commands(self):
+        for s in self.job["steps"]:
+            self.assertNotRegex(s.get("run", ""), r"set\s+-[a-wyz]*x", s.get("name"))
 
 
 if __name__ == "__main__":
