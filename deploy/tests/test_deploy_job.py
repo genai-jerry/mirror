@@ -283,5 +283,166 @@ class RemoteDeployScript(unittest.TestCase):
         self.assertNotIn("-v ", text.replace("--password-stdin", ""))
 
 
+FAKE_SSH = """\
+#!/usr/bin/env bash
+# Stands in for ssh: only the deploy-server alias is accepted, and the remote
+# command runs here, with this process's standard input.
+echo "ssh $*" >> "$FAKE_LOG"
+[ "$1" = deploy-server ] || { echo "unexpected ssh target $1" >&2; exit 255; }
+exec bash -c "$2"
+"""
+
+FAKE_SCP = """\
+#!/usr/bin/env bash
+echo "scp $*" >> "$FAKE_LOG"
+dest="${@: -1}"
+case "$dest" in deploy-server:*) ;; *) echo "unexpected scp target" >&2; exit 1 ;; esac
+cp "${@:1:$#-1}" "${dest#deploy-server:}"
+"""
+
+
+class DeployJobEndToEnd(unittest.TestCase):
+    """QA: the deploy job's steps run in order, as GitHub would run them, against
+    a fake server (ssh/scp run locally) with fake docker and curl.
+
+    Scenarios: Settings reach the container, Secrets stay out of sight,
+    Changing a server, Healthy deploy, Unhealthy deploy.
+    """
+
+    SECRETS = {
+        "DEPLOY_HOST": "staging-host.example.invalid",
+        "DEPLOY_USER": "deployer",
+        "DEPLOY_PORT": "2222",
+        "DEPLOY_SSH_KEY": "-----FAKE KEY 7f3a-----",
+        "DEPLOY_KNOWN_HOSTS": "staging-host.example.invalid ssh-ed25519 AAAAfake",
+        "SARVAM_API_KEY": "sk-$HOME-#not-a-comment-91c2",
+        "ADMIN_TOKEN": "admin-5d8e",
+        "APP_TOKEN": "app-b41f",
+        "GITHUB_TOKEN": "ghs-run-token-0a9b",
+    }
+    IMAGE = "ghcr.io/genai-jerry/mirror-backend:abc123"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = pathlib.Path(self.tmp.name)
+        self.home = base / "home"
+        self.home.mkdir()
+        self.server_dir = base / "server" / "mirror"
+        self.bin = base / "bin"
+        self.bin.mkdir()
+        self.log = base / "log"
+        self.summary = base / "summary"
+        self.summary.touch()
+        for name, body in [("docker", FAKE_DOCKER), ("curl", FAKE_CURL),
+                           ("ssh", FAKE_SSH), ("scp", FAKE_SCP)]:
+            path = self.bin / name
+            path.write_text(body)
+            path.chmod(0o755)
+        self.steps = load_workflow()["jobs"]["deploy"]["steps"]
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def step_env(self, step, extra):
+        env = {"PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": str(self.home),
+               "FAKE_LOG": str(self.log), "GITHUB_STEP_SUMMARY": str(self.summary),
+               "ENVIRONMENT": "staging", "IMAGE": self.IMAGE,
+               "DEPLOY_DIR": str(self.server_dir),
+               "HEALTH_TIMEOUT": "1", "HEALTH_INTERVAL": "0.2"}
+        env.update(extra)
+        for key, value in step.get("env", {}).items():
+            if value.startswith("${{ secrets."):
+                env[key] = self.SECRETS[value.split(".")[1].split()[0]]
+            elif value == "${{ github.actor }}":
+                env[key] = "octo-actor"
+        return env
+
+    def run_job(self, **extra):
+        """Run the job's shell steps with GitHub's success()/failure()/always() rules."""
+        failed = False
+        output = ""
+        for step in self.steps:
+            if "run" not in step:
+                continue
+            cond = step.get("if", "success()")
+            if (cond == "success()" and failed) or (cond == "failure()" and not failed):
+                continue
+            result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+                                    cwd=ROOT, capture_output=True, text=True,
+                                    env=self.step_env(step, extra), timeout=60)
+            output += result.stdout + result.stderr
+            if result.returncode != 0:
+                failed = True
+        calls = self.log.read_text() if self.log.exists() else ""
+        return failed, output, calls
+
+    def test_healthy_deploy_end_to_end(self):
+        failed, output, calls = self.run_job(FAKE_HEALTH='{"status":"ok"}')
+        self.assertFalse(failed, output)
+        # Healthy deploy: the summary names the environment and image tag.
+        self.assertIn(f"Deployed {self.IMAGE} to staging", self.summary.read_text())
+        # The Compose file and server script reached the server.
+        self.assertTrue((self.server_dir / "compose.yaml").is_file())
+        self.assertTrue((self.server_dir / "remote-deploy.sh").is_file())
+        # Settings reach the container: the .env holds every value literally,
+        # readable only by the deploy user.
+        env_file = self.server_dir / ".env"
+        self.assertEqual(stat.S_IMODE(env_file.stat().st_mode), 0o600)
+        self.assertEqual(env_file.read_text(), (
+            f"BACKEND_IMAGE='{self.IMAGE}'\n"
+            f"SARVAM_API_KEY='{self.SECRETS['SARVAM_API_KEY']}'\n"
+            f"ADMIN_TOKEN='{self.SECRETS['ADMIN_TOKEN']}'\n"
+            f"APP_TOKEN='{self.SECRETS['APP_TOKEN']}'\n"))
+        # Redeploy replaces the old container: pull then up, never down.
+        self.assertIn("docker compose up -d --remove-orphans backend", calls)
+        self.assertNotIn("compose down", calls)
+        # The SSH key and config are removed afterwards.
+        self.assertFalse((self.home / ".ssh" / "deploy_key").exists())
+        self.assertFalse((self.home / ".ssh" / "config").exists())
+
+    def test_server_address_and_secrets_stay_off_command_lines_and_log(self):
+        failed, output, calls = self.run_job(FAKE_HEALTH='{"status":"ok"}')
+        self.assertFalse(failed, output)
+        # Changing a server: every ssh/scp goes through the alias the secrets fill.
+        for line in calls.splitlines():
+            if line.startswith(("ssh ", "scp ")):
+                self.assertIn("deploy-server", line)
+        for name, value in self.SECRETS.items():
+            self.assertNotIn(value, output, f"{name} appeared in the log")
+            for line in calls.splitlines():
+                if not line.startswith("token="):
+                    self.assertNotIn(value, line, f"{name} on a command line")
+        self.assertNotIn(self.SECRETS["DEPLOY_HOST"], self.summary.read_text())
+
+    def test_changing_the_host_secret_changes_the_target(self):
+        setup = next(s for s in self.steps if s["name"] == "SSH set-up")
+        self.SECRETS = dict(self.SECRETS, DEPLOY_HOST="new-staging.example.invalid")
+        result = subprocess.run(["bash", "-e", "-c", setup["run"]], cwd=ROOT,
+                                capture_output=True, text=True,
+                                env=self.step_env(setup, {}))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config = (self.home / ".ssh" / "config").read_text()
+        self.assertIn("HostName new-staging.example.invalid", config)
+        self.assertIn("Port 2222", config)
+
+    def test_unhealthy_deploy_names_environment_and_image(self):
+        failed, output, calls = self.run_job(FAKE_HEALTH='{"status":"starting"}',
+                                             ENVIRONMENT="production")
+        self.assertTrue(failed)
+        self.assertIn(f"::error::Deploy of {self.IMAGE} to production failed", output)
+        self.assertIn(f"Deploy of {self.IMAGE} to production failed", self.summary.read_text())
+        self.assertNotIn("Deployed ", self.summary.read_text())
+        self.assertFalse((self.home / ".ssh" / "deploy_key").exists())
+
+    def test_missing_secret_contacts_no_server(self):
+        self.SECRETS = dict(self.SECRETS, SARVAM_API_KEY="")
+        failed, output, calls = self.run_job(FAKE_HEALTH='{"status":"ok"}')
+        self.assertTrue(failed)
+        self.assertIn("Secret SARVAM_API_KEY is not set in the staging environment", output)
+        self.assertNotIn("ssh ", calls)
+        self.assertNotIn("scp ", calls)
+        self.assertNotIn("docker", calls)
+
+
 if __name__ == "__main__":
     unittest.main()
