@@ -594,6 +594,24 @@ class FailuresStopTheRun(unittest.TestCase):
                 r = subprocess.run(["bash", "-n", "-c", s["run"]], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, (s.get("name"), r.stderr))
 
+    def _run_with_gradlew(self, step_name, exit_code):
+        s = step(self.wf, step_name)
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "app"))
+            gradlew = os.path.join(tmp, "app", "gradlew")
+            with open(gradlew, "w") as fh:
+                fh.write("#!/bin/sh\necho stub gradle \"$@\"\nexit %d\n" % exit_code)
+            os.chmod(gradlew, 0o755)
+            return run_step(s["run"], dict(GOOD_SECRETS), tmp)
+
+    def test_failed_unit_suite_fails_the_step(self):
+        self.assertNotEqual(self._run_with_gradlew("Unit tests", 1).returncode, 0)
+        self.assertEqual(self._run_with_gradlew("Unit tests", 0).returncode, 0)
+
+    def test_failed_build_fails_the_step(self):
+        self.assertNotEqual(self._run_with_gradlew("Build the staging app", 1).returncode, 0)
+        self.assertEqual(self._run_with_gradlew("Build the staging app", 0).returncode, 0)
+
     def test_one_build_at_a_time(self):
         self.assertEqual(
             self.wf["concurrency"], {"group": "staging-app", "cancel-in-progress": False}
