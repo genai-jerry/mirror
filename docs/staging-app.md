@@ -157,6 +157,8 @@ own.
 | `The staging APK was not signed` | A signing secret is wrong, or the passwords do not match the keystore. Check the four signing secrets against section 3. |
 | The **Unit tests** step fails | An app test failed on `staging`. That is a code problem, not a setup problem: tell the developers. Nothing was published. |
 | The **Build the staging app** step fails with `Keystore was tampered with, or password was incorrect` | `APP_SIGNING_STORE_PASSWORD` or `APP_SIGNING_KEY_PASSWORD` is wrong. |
+| `The APK mirror-staging-<number>.apk is missing from the build files; nothing was published` | The build job did not hand over the APK. Run the workflow again; if it fails the same way, tell the developers. No pre-release or tag was created. |
+| `The build job passed no version code; nothing was published` | The build job's version step did not reach the publish job. Tell the developers. No pre-release or tag was created. |
 | **Create the pre-release** fails because the release already exists | The workflow file was renamed, which restarts the version numbers. Rename it back to `staging-app.yml`. |
 
 ## 5. Installing the app on a phone
