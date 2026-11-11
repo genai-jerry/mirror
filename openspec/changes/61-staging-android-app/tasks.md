@@ -100,7 +100,7 @@ job order, the pre-release flags and the notes.
 
 ## Task 3 — Staging flavour of the app, signed, with a rising version
 
-- [ ] Status: open
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #66
 - Depends on: Task 1 (the workflow that builds and signs the staging app),
