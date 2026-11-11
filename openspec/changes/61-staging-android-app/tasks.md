@@ -78,7 +78,7 @@ without an Android SDK.
 
 ## Task 2 — Pre-release that publishes the APK
 
-- [ ] Status: open
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #65
 - Depends on: Task 1 (the workflow that builds and signs the staging app)

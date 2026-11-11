@@ -1,7 +1,8 @@
 # Staging app (epic #61, openspec/changes/61-staging-android-app/design.md).
-# This file holds the triggers and the `build` job, which runs the app's unit
-# suite and builds the staging flavour of the app, signed with the test key.
-# The APK is kept as an artifact for the `publish` job (the pre-release task).
+# This file holds the triggers and two jobs. `build` runs the app's unit suite
+# and builds the staging flavour of the app, signed with the test key, and
+# keeps the APK as an artifact. `publish` runs only after a green `build` and
+# creates a GitHub pre-release with that APK attached (D11).
 #
 # Never rename this file: the version number is built from the run number
 # (D9), and a rename restarts it, so new builds would not install as updates.
@@ -174,3 +175,46 @@ jobs:
         if: always()
         run: |
           rm -f "$RUNNER_TEMP/staging-signing.p12"
+
+  # D11: runs only after a green build (needs, and no `if:`), so a failed build
+  # publishes nothing. No environment and no secret but the run's own token:
+  # this job never sees the backend address, the app token or the key.
+  publish:
+    name: Publish the staging pre-release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch the APK
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-apk
+          path: ${{ runner.temp }}/apk
+
+      # A pre-release, never the latest release. The notes name the version,
+      # the commit and the run, and nothing else.
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERSION_CODE: ${{ needs.build.outputs.version_code }}
+          VERSION_NAME: ${{ needs.build.outputs.version_name }}
+          APK_NAME: ${{ needs.build.outputs.apk_name }}
+        run: |
+          tag="staging-app-${VERSION_CODE}"
+          notes="$(printf 'Staging build of the Mirror app, for testers.\n\nVersion: %s (%s)\nCommit: %s\nBuilt by: %s\n\nInstall it on an Android phone as docs/staging-app.md describes.\n' \
+            "$VERSION_NAME" "$VERSION_CODE" "$SHA" "$RUN_URL")"
+          gh release create "$tag" "$RUNNER_TEMP/apk/$APK_NAME" \
+            --repo "$REPO" --target "$SHA" \
+            --title "Mirror staging ${VERSION_NAME}" \
+            --notes "$notes" --prerelease --latest=false
+
+      - name: Summary
+        env:
+          SHA: ${{ github.sha }}
+          VERSION_NAME: ${{ needs.build.outputs.version_name }}
+        run: |
+          echo "Published Mirror staging ${VERSION_NAME} for ${SHA:0:7}" >> "$GITHUB_STEP_SUMMARY"
