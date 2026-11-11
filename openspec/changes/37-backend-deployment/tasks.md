@@ -42,7 +42,7 @@ appears in the file.
 
 ## Task 2 — Workflow that builds and publishes the backend image
 
-- [ ] Status: not started
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #40
 - Depends on: nothing

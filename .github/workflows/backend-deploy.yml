@@ -1,0 +1,81 @@
+# Backend deploy (epic #37, openspec/changes/37-backend-deployment/design.md).
+# This file holds the triggers and the `build` job, which builds the backend's
+# Docker image and publishes it to GitHub Container Registry. The `deploy` job,
+# added by the deploy task, `needs: build`, so a failed build never contacts a
+# server.
+name: Backend deploy
+
+on:
+  push:
+    branches: [staging, main]
+    # D2: only backend or deployment changes deploy. Documents, the Android
+    # app and the factory's files are outside this list.
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/backend-deploy.yml"
+  # D3: "Run workflow" uses GitHub's own branch picker; no inputs.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and publish the backend image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Only staging or main
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ "$BRANCH" != "staging" ] && [ "$BRANCH" != "main" ]; then
+            echo "::error::Manual deploys run only from staging or main"
+            exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Backend present
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ ! -f backend/Dockerfile ]; then
+            echo "::error::backend/Dockerfile is not on ${BRANCH}; the mirror v1 backend must reach this branch first"
+            exit 1
+          fi
+
+      - name: Image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/mirror-backend:${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
