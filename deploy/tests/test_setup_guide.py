@@ -29,13 +29,15 @@ AUTOMATIC_SECRETS = {"GITHUB_TOKEN"}
 # Written into the server's .env by the deploy job itself, not by a person.
 WRITTEN_BY_DEPLOY = {"BACKEND_IMAGE"}
 
-REQUIRED = {
-    "DEPLOY_HOST",
-    "DEPLOY_USER",
-    "DEPLOY_SSH_KEY",
-    "DEPLOY_KNOWN_HOSTS",
-    "SARVAM_API_KEY",
-}
+
+def required_by_workflow():
+    """Names the deploy job refuses to run without: the `for name in ...`
+    loop whose body reports "<name> is not set"."""
+    text = WORKFLOW.read_text()
+    m = re.search(r"for name in ([A-Z0-9_ ]+); do\n(?:[^\n]*\n){0,3}?[^\n]*is not set", text)
+    if not m:
+        raise AssertionError("no required-settings check found in the workflow")
+    return set(m.group(1).split())
 
 
 def guide_text():
@@ -93,8 +95,11 @@ class SecretsAndVariables(unittest.TestCase):
             self.assertGreater(len(purpose), 10, name)
 
     def test_required_matches_the_deploy_jobs_check(self):
+        required = required_by_workflow()
+        self.assertIn("SARVAM_API_KEY", required)
+        self.assertLessEqual(required, set(self.rows))
         for name, cells in self.rows.items():
-            want = "required" if name in REQUIRED else "optional"
+            want = "required" if name in required else "optional"
             self.assertTrue(cells[2].startswith(want), f"{name}: {cells[2]}")
 
     def test_optional_settings_name_their_default(self):
