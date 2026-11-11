@@ -142,7 +142,7 @@ and for no other.
 
 ## Task 5 — Setup and install guide for the staging app
 
-- [ ] Status: open
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #68
 - Depends on: Task 2 (the pre-release), Task 3 (the staging flavour),
