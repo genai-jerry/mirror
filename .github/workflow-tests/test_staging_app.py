@@ -387,8 +387,18 @@ class Version(unittest.TestCase):
 
     def test_job_exposes_the_version_for_publish(self):
         outputs = load_workflow()["jobs"]["build"]["outputs"]
-        for key in ("version_code", "version_name", "apk_name"):
-            self.assertEqual(outputs[key], "${{ steps.version.outputs.%s }}" % key)
+        self.assertEqual(
+            outputs,
+            {
+                "version_code": "${{ steps.version.outputs.version_code }}",
+                "version_name": "${{ steps.version.outputs.version_name }}",
+            },
+        )
+
+    def test_job_passes_no_apk_name_to_publish(self):
+        # Bug #97: GitHub dropped this output because it matched a secret's
+        # value, so the publish job got an empty name. It is never passed.
+        self.assertNotIn("apk_name", load_workflow()["jobs"]["build"]["outputs"])
 
 
 class SigningKey(unittest.TestCase):
@@ -645,7 +655,6 @@ PUBLISH_ENV = {
     "RUN_URL": RUN_URL,
     "VERSION_CODE": "701",
     "VERSION_NAME": "0.1.0-staging.701",
-    "APK_NAME": "mirror-staging-701.apk",
 }
 
 # A stand-in for `gh` that writes each argument to a file, NUL-separated.
@@ -705,9 +714,11 @@ class PublishJob(unittest.TestCase):
                 "RUN_URL": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
                 "VERSION_CODE": "${{ needs.build.outputs.version_code }}",
                 "VERSION_NAME": "${{ needs.build.outputs.version_name }}",
-                "APK_NAME": "${{ needs.build.outputs.apk_name }}",
             },
         )
+
+    def test_publish_job_never_reads_an_apk_name_from_the_build(self):
+        self.assertNotIn("outputs.apk_name", yaml.safe_dump(self.job))
 
     def test_create_step_flags(self):
         run = step(self.wf, "Create the pre-release", "publish")["run"]
@@ -717,12 +728,23 @@ class PublishJob(unittest.TestCase):
         self.assertNotIn("--draft", run)
         self.assertIn('tag="staging-app-${VERSION_CODE}"', run)
 
-    def run_create(self):
+    def run_create_raw(self, apk=("mirror-staging-701.apk", "file"), **overrides):
+        """Run the create step with a fake gh. `apk` is (name, "file"|"dir")
+        placed in the downloaded build files, or None for no APK at all."""
         s = step(self.wf, "Create the pre-release", "publish")
         tmp = tempfile.mkdtemp()
         self.addCleanup(subprocess.run, ["rm", "-rf", tmp])
         bindir = os.path.join(tmp, "bin")
         os.makedirs(bindir)
+        os.makedirs(os.path.join(tmp, "apk"))
+        if apk is not None:
+            name, kind = apk
+            path = os.path.join(tmp, "apk", name)
+            if kind == "dir":
+                os.makedirs(path)
+            else:
+                with open(path, "wb") as fh:
+                    fh.write(b"apk-bytes")
         gh = os.path.join(bindir, "gh")
         with open(gh, "w") as fh:
             fh.write(FAKE_GH)
@@ -734,11 +756,54 @@ class PublishJob(unittest.TestCase):
             GH_ARGS_FILE=args_file,
             PATH=bindir + os.pathsep + os.environ["PATH"],
         )
+        env.update(overrides)
         r = run_step(s["run"], env, tmp)
+        args = None
+        if os.path.exists(args_file):
+            with open(args_file) as fh:
+                args = fh.read().split("\0")[:-1]
+        return tmp, r, args
+
+    def run_create(self):
+        tmp, r, args = self.run_create_raw()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(args_file) as fh:
-            args = fh.read().split("\0")[:-1]
         return tmp, args
+
+    def test_apk_name_comes_from_the_version_code(self):
+        # Scenario: Version code 701 / The build step passes no file name.
+        tmp, args = self.run_create()
+        self.assertEqual(args[3], os.path.join(tmp, "apk", "mirror-staging-701.apk"))
+        tmp, r, args = self.run_create_raw(apk=("mirror-staging-4203.apk", "file"),
+                                           VERSION_CODE="4203", APK_NAME="")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(args[3], os.path.join(tmp, "apk", "mirror-staging-4203.apk"))
+
+    def test_missing_apk_fails_before_any_release(self):
+        # Scenario: APK file absent.
+        _, r, args = self.run_create_raw(apk=None)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("::error::The APK mirror-staging-701.apk is missing from the build files",
+                      r.stdout)
+        self.assertIsNone(args, "gh was called, so a release would have been created")
+
+    def test_apk_with_another_version_code_is_not_published(self):
+        _, r, args = self.run_create_raw(apk=("mirror-staging-700.apk", "file"))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIsNone(args)
+
+    def test_apk_path_that_is_a_folder_fails_before_any_release(self):
+        # Scenario: Path points at a folder.
+        _, r, args = self.run_create_raw(apk=("mirror-staging-701.apk", "dir"))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIsNone(args)
+
+    def test_empty_version_code_fails_before_any_release(self):
+        # The run 43023091030 failure: an empty value from the build job made
+        # the upload point at the folder. An empty version code must not.
+        _, r, args = self.run_create_raw(apk=("mirror-staging-.apk", "file"), VERSION_CODE="")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("::error::The build job passed no version code", r.stdout)
+        self.assertIsNone(args)
 
     def opt(self, args, name):
         self.assertEqual(args.count(name), 1, name)
@@ -810,8 +875,12 @@ class PublishJob(unittest.TestCase):
             with open(gh, "w") as fh:
                 fh.write("#!/bin/sh\nexit 1\n")
             os.chmod(gh, 0o755)
+            os.makedirs(os.path.join(tmp, "apk"))
+            open(os.path.join(tmp, "apk", "mirror-staging-701.apk"), "w").close()
             env = dict(PUBLISH_ENV, RUNNER_TEMP=tmp, PATH=bindir + os.pathsep + os.environ["PATH"])
-            self.assertNotEqual(run_step(s["run"], env, tmp).returncode, 0)
+            r = run_step(s["run"], env, tmp)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertNotIn("::error::", r.stdout)  # it got as far as gh
 
     def test_every_shell_step_parses(self):
         for s in self.job["steps"]:

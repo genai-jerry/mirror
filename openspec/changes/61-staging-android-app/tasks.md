@@ -171,6 +171,21 @@ instead of taking the action's default, which asks for the retired `tools`
 package that the runner's sdkmanager no longer offers. The workflow tests
 fail if the list is missing or names `tools`.
 
+## Fix — publish gets an empty APK name (bug #97)
+
+- [x] Status: done
+- Repo: genai-jerry/mirror
+- Sub-issue: #98
+- Depends on: Task 2 (the pre-release)
+
+The build job no longer passes the APK file name to the publish job: GitHub
+drops a job output whose value contains a secret's value, so the publish job
+got an empty name and pointed the upload at a folder. The publish job builds
+the name `mirror-staging-<version code>.apk` from the version code alone,
+and fails with a clear error before creating any pre-release or tag when the
+version code is empty or the APK is missing or is a folder. The guide's
+failure table explains both new errors.
+
 ## Scenario coverage
 
 Every scenario in `specs/staging-app-distribution/spec.md` is served by at
