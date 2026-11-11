@@ -1,0 +1,33 @@
+# The backend as the server runs it (openspec/changes/37-backend-deployment,
+# design D10-D11). The deploy job copies this file and a `.env` beside it into
+# DEPLOY_DIR on the server; Docker Compose reads that `.env` for the values
+# below. No server address or secret value belongs in this file.
+#
+# By hand, from DEPLOY_DIR on the server:
+#   docker compose config        # check the file and the .env together
+#   docker compose up -d backend # start, or replace, the one backend container
+name: mirror
+
+services:
+  backend:
+    # The published image and its commit tag, e.g.
+    # ghcr.io/<owner>/mirror-backend:<sha>. Never a moving tag.
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is not set}
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Required: without it every recognition fails.
+      SARVAM_API_KEY: ${SARVAM_API_KEY:?SARVAM_API_KEY is not set}
+      # Optional: empty means unset, so the admin endpoints and the app-token
+      # check stay off unless the secret is set.
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      APP_TOKEN: ${APP_TOKEN:-}
+      # BACKEND_CONFIG_DIR is set by the image to /var/lib/mirror/runtime-config;
+      # the volume below mounts at that same path.
+    volumes:
+      # Runtime configuration (admin overrides) survives restarts and redeploys.
+      - runtime-config:/var/lib/mirror/runtime-config
+
+volumes:
+  runtime-config:

@@ -25,7 +25,7 @@ graph TD
 
 ## Task 1 — Compose file that runs the backend on the server
 
-- [ ] Status: not started
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #39
 - Depends on: nothing
