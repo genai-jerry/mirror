@@ -431,16 +431,41 @@ class BuildAndApk(unittest.TestCase):
         self.assertEqual(
             s["env"],
             {
-                "ORG_GRADLE_PROJECT_mirror.stagingBackendUrl": "${{ secrets.APP_BACKEND_URL }}",
-                "ORG_GRADLE_PROJECT_mirror.stagingAppToken": "${{ secrets.APP_TOKEN }}",
-                "ORG_GRADLE_PROJECT_mirror.stagingKeystoreFile": "${{ runner.temp }}/staging-signing.p12",
-                "ORG_GRADLE_PROJECT_mirror.stagingStorePassword": "${{ secrets.APP_SIGNING_STORE_PASSWORD }}",
-                "ORG_GRADLE_PROJECT_mirror.stagingKeyAlias": "${{ secrets.APP_SIGNING_KEY_ALIAS }}",
-                "ORG_GRADLE_PROJECT_mirror.stagingKeyPassword": "${{ secrets.APP_SIGNING_KEY_PASSWORD }}",
-                "ORG_GRADLE_PROJECT_mirror.stagingVersionCode": "${{ steps.version.outputs.version_code }}",
+                "ORG_GRADLE_PROJECT_mirrorStagingBackendUrl": "${{ secrets.APP_BACKEND_URL }}",
+                "ORG_GRADLE_PROJECT_mirrorStagingAppToken": "${{ secrets.APP_TOKEN }}",
+                "ORG_GRADLE_PROJECT_mirrorStagingKeystoreFile": "${{ runner.temp }}/staging-signing.p12",
+                "ORG_GRADLE_PROJECT_mirrorStagingStorePassword": "${{ secrets.APP_SIGNING_STORE_PASSWORD }}",
+                "ORG_GRADLE_PROJECT_mirrorStagingKeyAlias": "${{ secrets.APP_SIGNING_KEY_ALIAS }}",
+                "ORG_GRADLE_PROJECT_mirrorStagingKeyPassword": "${{ secrets.APP_SIGNING_KEY_PASSWORD }}",
+                "ORG_GRADLE_PROJECT_mirrorStagingVersionCode": "${{ steps.version.outputs.version_code }}",
             },
         )
         self.assertIn("./gradlew assembleStagingRelease", s["run"])
+
+    def test_every_gradle_variable_name_is_a_shell_identifier(self):
+        # `app/gradlew` runs under /bin/sh (dash on ubuntu-latest), which
+        # drops any variable whose name is not a shell identifier.
+        for key in step(self.wf, "Build the staging app")["env"]:
+            self.assertRegex(key, r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    def test_every_gradle_variable_reaches_gradle_through_sh(self):
+        s = step(self.wf, "Build the staging app")
+        values = {key: "value-%d" % i for i, key in enumerate(s["env"])}
+        shells = ["/bin/sh"] + [p for p in ("/bin/dash", "/usr/bin/dash") if os.path.exists(p)]
+        for shell in shells:
+            with tempfile.TemporaryDirectory() as tmp:
+                os.makedirs(os.path.join(tmp, "app"))
+                gradlew = os.path.join(tmp, "app", "gradlew")
+                dump = os.path.join(tmp, "env.out")
+                with open(gradlew, "w") as fh:
+                    fh.write("#!%s\nenv > %s\n" % (shell, dump))
+                os.chmod(gradlew, 0o755)
+                r = run_step(s["run"], values, tmp)
+                self.assertEqual(r.returncode, 0, (shell, r.stdout + r.stderr))
+                with open(dump) as fh:
+                    seen = dict(line.rstrip("\n").split("=", 1) for line in fh if "=" in line)
+                for key, value in values.items():
+                    self.assertEqual(seen.get(key), value, (shell, key))
 
     def test_unit_suite_is_the_gate_suite(self):
         self.assertIn("./gradlew testDevDebugUnitTest", step(self.wf, "Unit tests")["run"])

@@ -66,19 +66,23 @@ build on one phone. The visible name makes clear it is a test build
 ### D6 — The workflow passes every secret to Gradle as an environment variable, never on a command line
 Each value reaches Gradle as an `ORG_GRADLE_PROJECT_<property>` variable set
 in the step's `env:` block. Gradle turns these into the project properties
-`mirror.stagingBackendUrl`, `mirror.stagingAppToken`,
-`mirror.stagingKeystoreFile`, `mirror.stagingStorePassword`,
-`mirror.stagingKeyAlias`, `mirror.stagingKeyPassword` and
-`mirror.stagingVersionCode`. These names follow the existing
+`mirrorStagingBackendUrl`, `mirrorStagingAppToken`,
+`mirrorStagingKeystoreFile`, `mirrorStagingStorePassword`,
+`mirrorStagingKeyAlias`, `mirrorStagingKeyPassword` and
+`mirrorStagingVersionCode`. They hold no dot, unlike the existing
 `mirror.systemTestBackendUrl` and `mirror.systemTestAppToken`.
 
 Why: a `-P` argument is visible in the process list and can be echoed in a
 Gradle error. An environment variable is neither, and GitHub masks it in the
-log as well.
+log as well. The names hold no dot because `app/gradlew` runs under
+`/bin/sh`, which is `dash` on the Ubuntu runners, and `dash` drops every
+environment variable whose name is not a shell identifier before Gradle
+starts. A dotted name would never reach the build (found in review of the
+build workflow task).
 
 ### D7 — The build reads the backend address and token at build time, so a changed secret needs no code change
-`app/app/build.gradle.kts` reads `mirror.stagingBackendUrl` and
-`mirror.stagingAppToken` exactly as it reads the `systemTest` ones today, and
+`app/app/build.gradle.kts` reads `mirrorStagingBackendUrl` and
+`mirrorStagingAppToken` exactly as it reads the `systemTest` ones today, and
 writes them into `BuildConfig.BACKEND_BASE_URL` and
 `BuildConfig.BACKEND_APP_TOKEN`. `BackendConfig` is unchanged. Unset, the
 staging address falls back to the developer address `http://10.0.2.2:8000/`
@@ -92,7 +96,7 @@ value is set (D4).
 ### D8 — One fixed test key signs every staging build; the key is a base64 keystore secret written to a private temporary file for the build only
 `APP_SIGNING_KEYSTORE` holds a PKCS12 keystore encoded as base64. The workflow
 decodes it with `umask 077` into `$RUNNER_TEMP/staging-signing.p12`, passes
-the path as `mirror.stagingKeystoreFile`, and deletes it in an `always()`
+the path as `mirrorStagingKeystoreFile`, and deletes it in an `always()`
 step. The build file creates a `staging` signing config from the four signing
 properties and gives it to the `stagingRelease` variant only. Without the
 properties the staging release build stays unsigned. The workflow checks the
@@ -104,7 +108,7 @@ reaches a file in the repository or the log.
 
 ### D9 — The version number is the workflow's run number times 100 plus the run attempt
 `versionCode = github.run_number * 100 + github.run_attempt`, passed as
-`mirror.stagingVersionCode`. The version name becomes
+`mirrorStagingVersionCode`. The version name becomes
 `0.1.0-staging.<versionCode>`. The build fails if the attempt is above 99.
 The workflow file must never be renamed, because a rename restarts the run
 number.
@@ -137,7 +141,7 @@ build as the latest release.
 ### D12 — Plain HTTP is allowed to the staging backend's host only, by a network rule the build writes for the staging flavour
 A Gradle task fills a committed template,
 `app/app/network-security/staging.xml`, with the host from
-`mirror.stagingBackendUrl`. It writes the result as
+`mirrorStagingBackendUrl`. It writes the result as
 `res/xml/network_security_config_staging.xml` in a generated resource folder
 of the staging variants only. A staging manifest overlay points
 `android:networkSecurityConfig` at that file. The staging rule lists only the
@@ -256,13 +260,13 @@ so the APK's own version and the pre-release name agree.
 **`Build the staging app`** `env:` block:
 
 ```yaml
-ORG_GRADLE_PROJECT_mirror.stagingBackendUrl:   ${{ secrets.APP_BACKEND_URL }}
-ORG_GRADLE_PROJECT_mirror.stagingAppToken:     ${{ secrets.APP_TOKEN }}
-ORG_GRADLE_PROJECT_mirror.stagingKeystoreFile: ${{ runner.temp }}/staging-signing.p12
-ORG_GRADLE_PROJECT_mirror.stagingStorePassword: ${{ secrets.APP_SIGNING_STORE_PASSWORD }}
-ORG_GRADLE_PROJECT_mirror.stagingKeyAlias:     ${{ secrets.APP_SIGNING_KEY_ALIAS }}
-ORG_GRADLE_PROJECT_mirror.stagingKeyPassword:  ${{ secrets.APP_SIGNING_KEY_PASSWORD }}
-ORG_GRADLE_PROJECT_mirror.stagingVersionCode:  ${{ steps.version.outputs.version_code }}
+ORG_GRADLE_PROJECT_mirrorStagingBackendUrl:   ${{ secrets.APP_BACKEND_URL }}
+ORG_GRADLE_PROJECT_mirrorStagingAppToken:     ${{ secrets.APP_TOKEN }}
+ORG_GRADLE_PROJECT_mirrorStagingKeystoreFile: ${{ runner.temp }}/staging-signing.p12
+ORG_GRADLE_PROJECT_mirrorStagingStorePassword: ${{ secrets.APP_SIGNING_STORE_PASSWORD }}
+ORG_GRADLE_PROJECT_mirrorStagingKeyAlias:     ${{ secrets.APP_SIGNING_KEY_ALIAS }}
+ORG_GRADLE_PROJECT_mirrorStagingKeyPassword:  ${{ secrets.APP_SIGNING_KEY_PASSWORD }}
+ORG_GRADLE_PROJECT_mirrorStagingVersionCode:  ${{ steps.version.outputs.version_code }}
 ```
 
 No Gradle call uses `--info`, `--debug`, `--scan` or `--stacktrace`, and no
@@ -403,16 +407,16 @@ In `app/app/build.gradle.kts`, beside the existing `systemTest` reads:
 
 ```kotlin
 val stagingBackendUrl: String =
-    (project.findProperty("mirror.stagingBackendUrl") as String?)?.trim()
+    (project.findProperty("mirrorStagingBackendUrl") as String?)?.trim()
         ?.takeIf { it.isNotEmpty() } ?: "http://10.0.2.2:8000/"
-val stagingAppToken: String = appToken("mirror.stagingAppToken")
+val stagingAppToken: String = appToken("mirrorStagingAppToken")
 val stagingVersionCode: Int =
-    (project.findProperty("mirror.stagingVersionCode") as String?)?.toIntOrNull() ?: 1
+    (project.findProperty("mirrorStagingVersionCode") as String?)?.toIntOrNull() ?: 1
 ```
 
 The URL is checked with `java.net.URI`: the scheme must be `http` or
 `https` and the host must not be empty. Otherwise configuration fails with
-`mirror.stagingBackendUrl is not an http or https URL`, without the value.
+`mirrorStagingBackendUrl is not an http or https URL`, without the value.
 
 The flavour:
 
@@ -435,8 +439,8 @@ set and the keystore file exists:
 
 ```kotlin
 val stagingSigning = listOf(
-    "mirror.stagingKeystoreFile", "mirror.stagingStorePassword",
-    "mirror.stagingKeyAlias", "mirror.stagingKeyPassword",
+    "mirrorStagingKeystoreFile", "mirrorStagingStorePassword",
+    "mirrorStagingKeyAlias", "mirrorStagingKeyPassword",
 ).map { (project.findProperty(it) as String?).orEmpty() }
 
 signingConfigs {
@@ -462,8 +466,8 @@ test key. The `dev` and
 `app/app/src/staging/res/values/strings.xml` holds one string,
 `app_name` = `Mirror staging`. Every other string stays in main.
 
-`app/gradle.properties` gains the empty defaults `mirror.stagingBackendUrl=`
-and `mirror.stagingAppToken=`, with a comment saying the workflow sets them
+`app/gradle.properties` gains the empty defaults `mirrorStagingBackendUrl=`
+and `mirrorStagingAppToken=`, with a comment saying the workflow sets them
 and they are never committed with values.
 
 **Profile and README.** The README's flavour table gains the `staging` row.
@@ -479,7 +483,7 @@ person's first build:
 
 - `./gradlew testDevDebugUnitTest assembleDebug lint` with nothing set:
   green.
-- `./gradlew assembleStagingRelease -Pmirror.stagingBackendUrl=ftp://x`:
+- `./gradlew assembleStagingRelease -PmirrorStagingBackendUrl=ftp://x`:
   fails with the URL message.
 
 ### Failure modes
