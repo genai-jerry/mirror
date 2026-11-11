@@ -1,19 +1,79 @@
 {
   "repo": "genai-jerry/mirror",
   "estate_role": "A new product: Android app for real-time camera-based text translation using Sarvam OCR and translate",
-  "stack": "Not chosen yet. This is a new repository with no code. The first epic's design chooses the stack (approved at G2); the task that scaffolds it fills in this profile.",
+  "stack": "Two halves in one repository. backend/: Python 3.12, FastAPI on uvicorn, httpx for outgoing calls, pytest for tests, ruff for lint and format, dependencies in backend/pyproject.toml managed by uv. The minor version is pinned by backend/.python-version (3.12), which is what makes uv provision CPython 3.12 rather than whatever newer interpreter a runner happens to offer; the Docker image runs python:3.12-slim to match. app/: the Android app — Kotlin (the compiler built into the Android Gradle plugin), Jetpack Compose, CameraX, Gradle Kotlin DSL on the Gradle wrapper. Gradle 9.9.0, Android Gradle plugin 9.5.1, compileSdk 37.2, targetSdk 37, minSdk 26, JVM target 17. Versions live in app/gradle/libs.versions.toml and nowhere else. The Gradle root is app/ and its one module is :app at app/app/.",
   "branches": {
     "default": "main",
     "staging": null
   },
   "commands": {
-    "test": null,
-    "build": null,
-    "lint": null
+    "test": "scripts/gate.sh test",
+    "build": "scripts/gate.sh build",
+    "lint": "scripts/gate.sh lint"
   },
-  "conventions": [],
+  "conventions": [
+    "The backend is one package, backend/app/, with one module per concern: settings.py (environment only), config.py (JSON configuration files), logging_setup.py, errors.py, routes/ (one module per endpoint group), providers/ (one module per outgoing provider).",
+    "Build the app through app.main.create_app(settings), never by importing a module-level app in tests. Pass a Settings object in so a test chooses its own configuration directory.",
+    "Secrets and deployment facts come from the environment, through app.settings only. Everything a person may change at runtime — languages, providers, budgets — is a JSON file read through app.config. Never read os.environ outside settings.py.",
+    "Answer every error with the one shape {\"error\": {\"code\": ..., \"message\": ...}} by raising app.errors.ApiError. The code is what the app reads; the message is a plain sentence for an operator.",
+    "Log with app.logging_setup.log_event(name, **fields): one JSON line per event on standard output, the event name taken from the design's logged-events table. The system test cases read these lines, so an event name is part of the contract.",
+    "Type-annotate every function signature, and start each module with `from __future__ import annotations`.",
+    "Tests live in backend/tests/, one file per module under test, named test_<module>.py. A test name says what must be true: test_an_override_replaces_the_shipped_file.",
+    "Line length is 100 and ruff format is the arbiter; run the lint command rather than formatting by hand.",
+    "The app's code is one package, com.genaijerry.mirror, under app/app/src/main/java/. The UI goes in the ui sub-package, one file per screen or per drawn piece.",
+    "A composable the unit tests drive takes its state and its callbacks as parameters and holds none of its own. MainActivity owns the state and passes it down; MainScreen() is the pattern to copy.",
+    "Anything that touches the device — the camera, the permission prompt, the settings app, the network — is passed into a composable as a parameter, so a test can supply its own. See MainScreen's cameraContent parameter.",
+    "Every string a person reads lives in app/app/src/main/res/values/strings.xml, never in Kotlin.",
+    "The backend URL comes from BuildConfig through BackendConfig only, set per build flavour in app/app/build.gradle.kts. No other file names a host.",
+    "Dependency versions go in app/gradle/libs.versions.toml and are referenced as libs.*. Never write a version literal in a build file.",
+    "Give a test tag to anything the unit tests address, and keep the tags together in one object per screen (MainScreenTags)."
+  ],
+  "qa_notes": [
+    "The whole backend suite is `cd backend && uv run pytest`; uv installs Python 3.12 and syncs dependencies itself, so a clean checkout needs no setup step.",
+    "Use the `client` fixture (backend/tests/conftest.py) for endpoint tests and the `settings` fixture for anything that reads configuration — it points the override directory at pytest's tmp_path, so a test never writes into the repository.",
+    "respx is installed for faking Sarvam's HTTP calls. No test may call Sarvam for real: there must be no live network call in the suite.",
+    "capsys plus json.loads is how a test asserts on a structured log line — see backend/tests/test_logging.py.",
+    "Test data in the suite is synthetic. The epic's system test data sets live in openspec/changes/<epic>/system-tests/data/ and are loaded into a running backend, not into the unit suite.",
+    "The app's suite is `cd app && ./gradlew testDevDebugUnitTest`. Tests live in app/app/src/test/java/, mirroring the main package. A test name says what must be true: the_screen_asks_for_the_camera_exactly_once_when_it_opens.",
+    "Screen tests run on Robolectric, so they need no device and no emulator. Use createComposeRule() from androidx.compose.ui.test.junit4.v2 — the older androidx.compose.ui.test.junit4.createComposeRule is deprecated.",
+    "app/app/src/test/resources/robolectric.properties pins the Android runtime the tests use (36), because Robolectric has no Android 37 yet. Do not also pin an SDK per test class.",
+    "No test may touch a real camera or a real backend. The device and the network are parameters a test supplies (see conventions).",
+    "mockwebserver3 (shipped with OkHttp) is how an app test answers a backend request — see BackendLanguageCatalogueTest. Everything above a single HTTP client is tested against a fake of its interface instead (FakeLanguageCatalogue in app/app/src/test/java/com/genaijerry/mirror/LanguageTestSupport.kt).",
+    "An activity test runs against TestMirrorApplication, declared with @Config(application = TestMirrorApplication::class). That is what keeps MirrorApplication's real backend client out of the suite, so add a new app-wide dependency to both classes."
+  ],
+  "deploy": {
+    "health_checks": [
+      "curl -fsS http://127.0.0.1:8000/healthz"
+    ],
+    "notes": [
+      "The backend runs as ONE instance in v1: the translation cache and the recognition rate budget are per-process (design decisions D7 and D8). Running two replicas doubles the outgoing rate against Sarvam's limit — do not scale out before that state moves out of process.",
+      "SARVAM_API_KEY must be set in the environment or every recognition call fails. ADMIN_TOKEN must be set for the admin configuration endpoints to exist at all, which the system test data loader needs.",
+      "Mount the BACKEND_CONFIG_DIR override directory as a volume. Without it, configuration an operator or the loader writes is lost when the container restarts.",
+      "Build the image from the backend directory: docker build -f backend/Dockerfile -t mirror-backend backend."
+    ]
+  },
+  "test_data": {
+    "load": "uv run --project backend python backend/scripts/test_data.py load",
+    "unload": "uv run --project backend python backend/scripts/test_data.py unload",
+    "format": "json"
+  },
   "gotchas": [
-    "New repository: there is no code yet. Do not assume a stack the approved design did not choose.",
-    "The task that scaffolds the project sets stack, commands (test, build, lint — each one a command it ran) and conventions in this file, in the same PR."
+    "`make` is NOT installed on the factory's runners, so never call `make test`. The root Makefile wraps the same commands for a person at a terminal; the commands in this profile are the ones to run.",
+    "The commands in this profile run scripts/gate.sh, which covers BOTH halves. The backend half always runs. The app half runs only where a JDK and an Android SDK are on the machine; elsewhere the gate prints 'app: <gate> SKIPPED' and passes on the backend result alone. So a green factory run does NOT by itself mean the app half was built — read the gate's output for the SKIPPED line. Set MIRROR_APP_GATE=required to make a missing SDK a failure.",
+    "The factory's runners have no Android SDK by default, so the app half is normally unverified by a factory run. Verify a change to app/ on a machine with Android Studio or the SDK command-line tools, or install a JDK and the SDK in the run before testing (platform 37.2 and build-tools 37.0.0 are what this project needs).",
+    "Gradle must run on a JDK of 21 or later, even though the code targets JVM 17: Robolectric's Android 36 runtime (the one robolectric.properties pins) refuses to start on 17 — 'Android SDK 36 requires Java 21'. A factory run that installs a JDK for the app half must install 21.",
+    "`docker` is NOT installed on the factory's runners either. backend/Dockerfile is therefore unverified by any factory run — a change to it must be built by a person before it is trusted.",
+    "The build command is `uv build`, which produces a wheel and a source distribution. It does not build the Docker image.",
+    "backend/.python-version pins Python 3.12 and backend/tests/test_runtime.py fails if the suite runs on anything else. A runner with only a newer Python will have uv download managed CPython 3.12; do not 'fix' that failure by widening the pin, because production runs python:3.12-slim. Changing the version means changing the design, the Dockerfile, .python-version, this profile and that test together.",
+    "Kotlin has no plugin of its own: from Android Gradle plugin 9 the Android plugin brings the Kotlin compiler. Applying org.jetbrains.kotlin.android fails the build, and the old android.kotlinOptions block no longer exists — configure the compiler in the top-level `kotlin { compilerOptions { } }` block instead.",
+    "`./gradlew testDebugUnitTest` is ambiguous, because the app has two flavours (dev and systemTest). The suite command is testDevDebugUnitTest; assembleDebug and lint cover both flavours and need no flavour name.",
+    "Robolectric needs --add-opens=java.base/jdk.internal.access=ALL-UNNAMED on a JDK of 17 or later, which app/app/build.gradle.kts passes in testOptions. Removing it makes every screen test fail with 'Failed to interact with raw FileDescriptor internals'.",
+    "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration. Only the files in app.config.MANAGED_CONFIGS (budget, languages) may be written as an override or removed by the admin endpoint.",
+    "app.config parses a file again only when its modification time or size has changed, and a write through app.config.write_override forgets the file it wrote. Read configuration through load_config on every request — that is already cheap — and do not add a second cache in front of it.",
+    "The admin endpoints (PUT /v1/admin/config/languages, PUT /v1/admin/config/budget, DELETE /v1/admin/config/overrides) exist only when ADMIN_TOKEN is set; without it they answer 404. A whole configuration file is validated before it is stored, so a file the service cannot use is refused with 400 rather than breaking the next request.",
+    "The test_data commands reach the backend over HTTP, so they run from the repository root and need two environment variables: ADMIN_TOKEN (the token the target backend was started with) and BACKEND_URL (where it runs — the default is http://127.0.0.1:8000, which is only right for a backend on the same machine). They take the epic's data directory as their last argument.",
+    "`load` with no --set removes every override and applies the baseline language configuration, which is the state every system test case starts from; `load --set <name>` applies one named set for one case. Both replace a whole configuration file, so running either twice changes nothing the second time.",
+    "Camera images are never written to disk. They live in request memory and are discarded with the response.",
+    "The Sarvam key, the admin token and the app token must appear in no log line and no response body."
   ]
 }

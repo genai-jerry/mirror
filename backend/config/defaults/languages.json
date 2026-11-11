@@ -1,0 +1,29 @@
+{
+  "sources": [
+    {
+      "code": "ml-IN",
+      "name": "Malayalam",
+      "recognition_provider": "sarvam-parse",
+      "translation_provider": "sarvam-translate"
+    }
+  ],
+  "targets": [
+    {
+      "code": "en-IN",
+      "name": "English"
+    }
+  ],
+  "providers": {
+    "sarvam-parse": {
+      "kind": "sarvam_parse"
+    },
+    "sarvam-translate": {
+      "kind": "sarvam_translate",
+      "model": "mayura:v1"
+    },
+    "sarvam-translate-alt": {
+      "kind": "sarvam_translate",
+      "model": "sarvam-translate:v1"
+    }
+  }
+}
