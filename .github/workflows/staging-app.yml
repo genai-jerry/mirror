@@ -114,8 +114,13 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Bug #93: the action's default list asks for the retired `tools`
+      # package, which current sdkmanager no longer offers. Name the list;
+      # the Android Gradle plugin fetches the platform and build tools itself.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
