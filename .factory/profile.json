@@ -24,7 +24,7 @@
     "A composable the unit tests drive takes its state and its callbacks as parameters and holds none of its own. MainActivity owns the state and passes it down; MainScreen() is the pattern to copy.",
     "Anything that touches the device — the camera, the permission prompt, the settings app, the network — is passed into a composable as a parameter, so a test can supply its own. See MainScreen's cameraContent parameter.",
     "Every string a person reads lives in app/app/src/main/res/values/strings.xml, never in Kotlin.",
-    "The backend URL comes from BuildConfig through BackendConfig only, set per build flavour in app/app/build.gradle.kts. No other file names a host.",
+    "The backend URL comes from BuildConfig through BackendConfig only, set per build flavour in app/app/build.gradle.kts. No other file names a host. The staging flavour reads its address from the mirrorStagingBackendUrl build property, which the Staging app workflow passes in.",
     "Dependency versions go in app/gradle/libs.versions.toml and are referenced as libs.*. Never write a version literal in a build file.",
     "Give a test tag to anything the unit tests address, and keep the tags together in one object per screen (MainScreenTags)."
   ],
@@ -66,7 +66,7 @@
     "The build command is `uv build`, which produces a wheel and a source distribution. It does not build the Docker image.",
     "backend/.python-version pins Python 3.12 and backend/tests/test_runtime.py fails if the suite runs on anything else. A runner with only a newer Python will have uv download managed CPython 3.12; do not 'fix' that failure by widening the pin, because production runs python:3.12-slim. Changing the version means changing the design, the Dockerfile, .python-version, this profile and that test together.",
     "Kotlin has no plugin of its own: from Android Gradle plugin 9 the Android plugin brings the Kotlin compiler. Applying org.jetbrains.kotlin.android fails the build, and the old android.kotlinOptions block no longer exists — configure the compiler in the top-level `kotlin { compilerOptions { } }` block instead.",
-    "`./gradlew testDebugUnitTest` is ambiguous, because the app has two flavours (dev and systemTest). The suite command is testDevDebugUnitTest; assembleDebug and lint cover both flavours and need no flavour name.",
+    "`./gradlew testDebugUnitTest` is ambiguous, because the app has three flavours (dev, systemTest and staging). The suite command is testDevDebugUnitTest; assembleDebug and lint cover every flavour and need no flavour name.",
     "Robolectric needs --add-opens=java.base/jdk.internal.access=ALL-UNNAMED on a JDK of 17 or later, which app/app/build.gradle.kts passes in testOptions. Removing it makes every screen test fail with 'Failed to interact with raw FileDescriptor internals'.",
     "An override file REPLACES the shipped file of the same name; it does not merge into it. That is what makes deleting the override restore the shipped configuration. Only the files in app.config.MANAGED_CONFIGS (budget, languages) may be written as an override or removed by the admin endpoint.",
     "app.config parses a file again only when its modification time or size has changed, and a write through app.config.write_override forgets the file it wrote. Read configuration through load_config on every request — that is already cheap — and do not add a second cache in front of it.",

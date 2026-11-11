@@ -45,17 +45,25 @@ the wrapper, so there is nothing to install for it.
 ```bash
 cd app
 ./gradlew testDevDebugUnitTest   # the unit suite — Robolectric, no device needed
-./gradlew assembleDebug          # both flavours' debug APKs
+./gradlew assembleDebug          # every flavour's debug APK
 ./gradlew lint                   # Android lint
 ```
 
-The app is built in two flavours, which differ only in the backend they talk
+The app is built in three flavours, which differ only in the backend they talk
 to (design decision D5):
 
 | Flavour | Backend |
 |---|---|
 | `dev` | `http://10.0.2.2:8000/` — the local backend, as the emulator sees the host machine |
 | `systemTest` | `http://127.0.0.1:8000/` by default. Point it elsewhere with `-Pmirror.systemTestBackendUrl=http://host:8000/` |
+| `staging` | The address in the `APP_BACKEND_URL` secret of the `staging` environment, which the "Staging app" workflow passes in. Its own app id (`com.genaijerry.mirror.staging`), named "Mirror staging" on the phone, signed with the test key, and a version that rises with every workflow run |
+
+## Installing the staging app
+
+Testers install the staging build from this repository's pre-releases. See the
+[staging app guide](docs/staging-app.md) for every secret the build reads,
+making the test signing key, running the first build and installing the app on
+a phone.
 
 ## Both halves at once
 
