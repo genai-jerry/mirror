@@ -124,7 +124,7 @@ debug build, lint) still pass with none of the staging properties set.
 
 ## Task 4 — Plain HTTP to the staging backend address only
 
-- [ ] Status: open
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #67
 - Depends on: Task 3 (the staging flavour of the app)

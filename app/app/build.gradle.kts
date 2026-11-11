@@ -43,6 +43,39 @@ run {
     }
 }
 
+// The staging flavour's plain-HTTP rule (design decision D12). Android reads
+// that permission from a resource file, which cannot read a build property, so
+// the build fills a committed template with the host of the same property as
+// the address. NetworkSecurityConfigTest names the same placeholder.
+val stagingHostPlaceholder = "@STAGING_HOST@"
+val stagingBackendHost: String = URI(stagingBackendUrl).host
+
+abstract class GenerateStagingNetworkConfig : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val template: RegularFileProperty
+
+    @get:Input
+    abstract val placeholder: Property<String>
+
+    // The input is the host, so a changed secret writes the file again.
+    @get:Input
+    abstract val host: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val xmlDir = outputDir.get().asFile.resolve("xml")
+        xmlDir.deleteRecursively()
+        xmlDir.mkdirs()
+        xmlDir.resolve("network_security_config_staging.xml").writeText(
+            template.get().asFile.readText().replace(placeholder.get(), host.get()),
+        )
+    }
+}
+
 // Rises with every workflow run (design decision D9), so each staging build
 // installs over the one before it.
 val stagingVersionCode: Int =
@@ -162,6 +195,25 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+// Only the staging variants get the generated rule; dev and systemTest keep
+// res/xml/network_security_config.xml, unchanged. One task per variant,
+// because each variant's generated folder is its own output.
+androidComponents {
+    onVariants(selector().withFlavor("environment" to "staging")) { variant ->
+        val generate = tasks.register<GenerateStagingNetworkConfig>(
+            "generate${variant.name.replaceFirstChar { it.uppercase() }}NetworkConfig",
+        ) {
+            template.set(layout.projectDirectory.file("network-security/staging.xml"))
+            placeholder.set(stagingHostPlaceholder)
+            host.set(stagingBackendHost)
+        }
+        variant.sources.res?.addGeneratedSourceDirectory(
+            generate,
+            GenerateStagingNetworkConfig::outputDir,
+        )
     }
 }
 

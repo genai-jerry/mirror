@@ -18,6 +18,9 @@ Gradle produced:
   file in the repository changed between the two;
 * the dev and systemTest flavours keep their app id, version, address and
   token, even with every staging value set;
+* the staging build's network rule allows plain HTTP to the host of the
+  address it was given and to nothing else, and a changed address changes
+  the rule; dev and systemTest keep the local addresses only (task #67);
 * a bad address stops the build without printing the address;
 * without the signing values the staging release build is unsigned (the
   workflow's `APK signed` step then fails the run).
@@ -54,6 +57,9 @@ SECOND = {
 STORE_PASSWORD = "store-pw-synthetic-qa"
 KEY_PASSWORD = "store-pw-synthetic-qa"  # PKCS12 uses one password for both
 KEY_ALIAS = "alias-synthetic-qa"
+
+# The plain-HTTP hosts of the dev and systemTest builds, in the main file's order.
+LOCAL_HOSTS = ["127.0.0.1", "localhost", "10.0.2.2"]
 
 DEV = {
     "package": "com.genaijerry.mirror",
@@ -164,6 +170,34 @@ def badging(apk):
     return dict(re.findall(r"(\w+)='([^']*)'", line))
 
 
+def network_rule(apk):
+    """The APK's plain-HTTP rule: (base config allows it, [hosts it is allowed to]).
+
+    Follows the manifest's android:networkSecurityConfig to the packaged file,
+    so this reads the rule the phone reads, whichever file that is.
+    """
+    aapt2 = build_tool("aapt2")
+
+    def dump(*args):
+        return subprocess.run(
+            [aapt2, "dump", *args, apk], capture_output=True, text=True, check=True
+        ).stdout
+
+    manifest = dump("xmltree", "--file", "AndroidManifest.xml")
+    resource_id = re.search(r":networkSecurityConfig\(0x[0-9a-f]+\)=@(0x[0-9a-f]+)", manifest)
+    resources = dump("resources")
+    path = re.search(
+        rf"resource {resource_id.group(1)} \S+\n\s+\(\) \(file\) (\S+)", resources
+    ).group(1)
+    tree = dump("xmltree", "--file", path)
+    base = re.search(r"E: base-config.*\n\s+A: cleartextTrafficPermitted=(\w+)", tree)
+    hosts = []
+    for block in re.split(r"\n\s+E: domain-config", tree)[1:]:
+        if re.match(r"[^\n]*\n\s+A: cleartextTrafficPermitted=true", block):
+            hosts += re.findall(r"T: '([^']*)'", block)
+    return base.group(1) == "true", hosts
+
+
 def signer_digest(apk):
     result = subprocess.run(
         [build_tool("apksigner"), "verify", "--print-certs", apk],
@@ -260,6 +294,15 @@ class StagingFlavourBuilds(unittest.TestCase):
         self.assertTrue(dex_contains(second["apk"], SECOND["url"]))
         self.assertFalse(dex_contains(second["apk"], FIRST["url"]))
 
+    # Scenarios: Plain HTTP staging backend, Any other plain HTTP server
+    def test_the_staging_build_allows_plain_http_to_its_backend_host_only(self):
+        self.assertEqual(network_rule(self.builds["first"]["apk"]), (False, ["198.51.100.7"]))
+
+    def test_a_changed_address_changes_the_plain_http_host(self):
+        self.assertEqual(
+            network_rule(self.builds["second"]["apk"]), (False, ["staging-two.example.test"])
+        )
+
     def test_changing_the_address_changes_no_file_in_the_repository(self):
         self.assertEqual(self.files_before, self.files_after)
 
@@ -311,6 +354,8 @@ class StagingFlavourBuilds(unittest.TestCase):
         self.assertEqual(info["versionName"], expected["version_name"])
         self.assertEqual(build["config"]["BACKEND_BASE_URL"], expected["url"])
         self.assertEqual(build["config"]["BACKEND_APP_TOKEN"], expected["token"])
+        # Scenario: Other builds unchanged (the network rules)
+        self.assertEqual(network_rule(build["apk"]), (False, LOCAL_HOSTS))
 
 
 @unittest.skipUnless(HAVE_TOOLS, "needs a JDK and an Android SDK (see the module docstring)")
