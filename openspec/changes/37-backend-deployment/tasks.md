@@ -64,7 +64,7 @@ is contacted.
 
 ## Task 3 — Deploy job that ships the image to the branch's server and checks its health
 
-- [ ] Status: not started
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #41
 - Depends on: Task 1 (the Compose file), Task 2 (the build-and-publish workflow)
