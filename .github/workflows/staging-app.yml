@@ -38,7 +38,9 @@ jobs:
     outputs:
       version_code: ${{ steps.version.outputs.version_code }}
       version_name: ${{ steps.version.outputs.version_name }}
-      apk_name: ${{ steps.version.outputs.apk_name }}
+      # Bug #97: no apk_name here. GitHub drops a job output whose value
+      # contains a secret's value, and the publish job then got an empty name.
+      # The publish job works the name out from the version code instead.
     steps:
       - name: Only staging
         env:
@@ -199,6 +201,8 @@ jobs:
 
       # A pre-release, never the latest release. The notes name the version,
       # the commit and the run, and nothing else.
+      # Bug #97: the APK name comes from the version code alone, and a missing
+      # APK stops the step before any release or tag is created.
       - name: Create the pre-release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -207,12 +211,21 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           VERSION_CODE: ${{ needs.build.outputs.version_code }}
           VERSION_NAME: ${{ needs.build.outputs.version_name }}
-          APK_NAME: ${{ needs.build.outputs.apk_name }}
         run: |
+          if ! [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]; then
+            echo "::error::The build job passed no version code; nothing was published"
+            exit 1
+          fi
+          apk_name="mirror-staging-${VERSION_CODE}.apk"
+          apk="$RUNNER_TEMP/apk/$apk_name"
+          if [ ! -f "$apk" ]; then
+            echo "::error::The APK ${apk_name} is missing from the build files; nothing was published"
+            exit 1
+          fi
           tag="staging-app-${VERSION_CODE}"
           notes="$(printf 'Staging build of the Mirror app, for testers.\n\nVersion: %s (%s)\nCommit: %s\nBuilt by: %s\n\nInstall it on an Android phone as docs/staging-app.md describes.\n' \
             "$VERSION_NAME" "$VERSION_CODE" "$SHA" "$RUN_URL")"
-          gh release create "$tag" "$RUNNER_TEMP/apk/$APK_NAME" \
+          gh release create "$tag" "$apk" \
             --repo "$REPO" --target "$SHA" \
             --title "Mirror staging ${VERSION_NAME}" \
             --notes "$notes" --prerelease --latest=false
