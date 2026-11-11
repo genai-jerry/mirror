@@ -70,6 +70,10 @@ output rather than only the exit code. `MIRROR_APP_GATE=required` turns that
 skip into a failure, which is what a machine that is meant to have the SDK
 should set.
 
+## Deploying the backend
+
+Deploying the backend: see the [setup guide](docs/deployment.md) for every secret and variable, preparing a server and the first deploy.
+
 ## Running the backend in Docker
 
 ```bash
