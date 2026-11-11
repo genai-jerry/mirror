@@ -43,7 +43,7 @@ graph TD
 
 ## Task 1 — Workflow that builds and signs the staging app
 
-- [ ] Status: open
+- [x] Status: done
 - Repo: genai-jerry/mirror
 - Sub-issue: #64
 - Depends on: nothing
