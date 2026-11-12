@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The staging flavour's network rule (epic 61, design decision D12). This is a
+  template, kept outside res/ so it is never packaged as it stands: the build
+  replaces the placeholder with the host of mirrorStagingBackendUrl and writes
+  the result as res/xml/network_security_config_staging.xml for the staging
+  variants only. Plain HTTP goes to that one host and to nothing else; the
+  local addresses the dev and systemTest builds allow are not listed here.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">@STAGING_HOST@</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The staging flavour's name on the phone, so a tester can tell the test
+     build apart (epic 61, design decision D5). Every other string stays in
+     main. -->
+<resources>
+    <string name="app_name">Mirror staging</string>
+</resources>
