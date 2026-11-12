@@ -41,7 +41,8 @@
     "mockwebserver3 (shipped with OkHttp) is how an app test answers a backend request — see BackendLanguageCatalogueTest. Everything above a single HTTP client is tested against a fake of its interface instead (FakeLanguageCatalogue in app/app/src/test/java/com/genaijerry/mirror/LanguageTestSupport.kt).",
     "An activity test runs against TestMirrorApplication, declared with @Config(application = TestMirrorApplication::class). That is what keeps MirrorApplication's real backend client out of the suite, so add a new app-wide dependency to both classes.",
     "The deployment has two more suites that scripts/gate.sh does NOT run: `python3 -m unittest discover -s deploy/tests -v` (the Compose file, the deploy job and deploy/remote-deploy.sh, and the setup guide docs/deployment.md) and `python3 .github/workflow-tests/test_backend_deploy.py` (the trigger filters and shell steps of .github/workflows/backend-deploy.yml). Both use the system python3 with PyYAML, not uv. Run them for any change under deploy/, docs/deployment.md or that workflow.",
-    "The deploy tests never use Docker, SSH or a server: they read the workflow as YAML, run its shell steps in bash, and run remote-deploy.sh against fake docker and curl commands. Copy that pattern for a new deploy test."
+    "The deploy tests never use Docker, SSH or a server: they read the workflow as YAML, run its shell steps in bash, and run remote-deploy.sh against fake docker and curl commands. Copy that pattern for a new deploy test.",
+    "The Staging app workflow has three more suites that scripts/gate.sh does NOT run: `python3 .github/workflow-tests/test_staging_app.py` (the triggers, shell steps and publish job of .github/workflows/staging-app.yml; 78 tests), `python3 .github/workflow-tests/test_staging_app_guide.py` (the guide docs/staging-app.md against that workflow; 16 tests) and `python3 .github/workflow-tests/test_staging_flavour.py` (real Gradle builds of the staging flavour; 14 tests). They use the system python3 with PyYAML. Run them for any change under app/app/build.gradle.kts, app/app/network-security/, app/app/src/staging/, docs/staging-app.md or that workflow."
   ],
   "deploy": {
     "health_checks": [
@@ -53,7 +54,8 @@
       "Mount the BACKEND_CONFIG_DIR override directory as a volume. Without it, configuration an operator or the loader writes is lost when the container restarts.",
       "Build the image from the backend directory: docker build -f backend/Dockerfile -t mirror-backend backend.",
       "Staging and production deploy through the 'Backend deploy' workflow (.github/workflows/backend-deploy.yml): a push to staging or main that touches backend/, deploy/ or that workflow builds the image, ships it to the branch's server over SSH, and checks http://127.0.0.1:8000/healthz on that server for up to 90 seconds. A push of documents, the app or factory files deploys nothing.",
-      "The health check above reaches a backend on the same machine only. The factory's runners cannot reach the staging server, so the proof that staging is healthy is a green 'Backend deploy' run on the staging branch, not this curl. There is no automatic rollback: re-run the last good 'Backend deploy' run (docs/deployment.md section 7)."
+      "The health check above reaches a backend on the same machine only. The factory's runners cannot reach the staging server, so the proof that staging is healthy is a green 'Backend deploy' run on the staging branch, not this curl. There is no automatic rollback: re-run the last good 'Backend deploy' run (docs/deployment.md section 7).",
+      "The staging app is published by the 'Staging app' workflow (.github/workflows/staging-app.yml): a push to staging that touches app/ or that workflow, or a manual run on staging, runs the app's unit suite, builds the staging flavour signed with the test key, and creates a GitHub pre-release with the APK. Its version code comes from the workflow's run number, so never rename that file: a rename restarts the number and new builds stop installing over old ones. Setup and secrets: docs/staging-app.md."
     ]
   },
   "test_data": {
@@ -80,7 +82,9 @@
     "Camera images are never written to disk. They live in request memory and are discarded with the response.",
     "The Sarvam key, the admin token and the app token must appear in no log line and no response body.",
     "The five `docker compose config` tests in deploy/tests are skipped on the factory's runners, because there is no Docker. 'OK (skipped=5)' there is the clean baseline, not a regression.",
-    "docs/deployment.md is under test: deploy/tests/test_setup_guide.py fails when a secret or variable the workflow or the Compose file reads is missing from the guide's table, or the guide lists one they do not read. Adding a secret means adding its line to the guide in the same PR."
+    "docs/deployment.md is under test: deploy/tests/test_setup_guide.py fails when a secret or variable the workflow or the Compose file reads is missing from the guide's table, or the guide lists one they do not read. Adding a secret means adding its line to the guide in the same PR.",
+    "The 14 tests in .github/workflow-tests/test_staging_flavour.py are all skipped on the factory's runners, because there is no JDK or Android SDK. 'OK (skipped=14)' there is the clean baseline; MIRROR_APP_GATE=required turns the missing SDK into a failure.",
+    "docs/staging-app.md is under test: test_staging_app_guide.py fails when a secret or an ::error:: message in staging-app.yml is missing from the guide. Adding either means changing the guide in the same PR."
   ],
   "plain_names": [
     {
