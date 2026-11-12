@@ -39,7 +39,10 @@
     "app/app/src/test/resources/robolectric.properties pins the Android runtime the tests use (36), because Robolectric has no Android 37 yet. Do not also pin an SDK per test class.",
     "No test may touch a real camera or a real backend. The device and the network are parameters a test supplies (see conventions).",
     "mockwebserver3 (shipped with OkHttp) is how an app test answers a backend request — see BackendLanguageCatalogueTest. Everything above a single HTTP client is tested against a fake of its interface instead (FakeLanguageCatalogue in app/app/src/test/java/com/genaijerry/mirror/LanguageTestSupport.kt).",
-    "An activity test runs against TestMirrorApplication, declared with @Config(application = TestMirrorApplication::class). That is what keeps MirrorApplication's real backend client out of the suite, so add a new app-wide dependency to both classes."
+    "An activity test runs against TestMirrorApplication, declared with @Config(application = TestMirrorApplication::class). That is what keeps MirrorApplication's real backend client out of the suite, so add a new app-wide dependency to both classes.",
+    "The deployment has two more suites that scripts/gate.sh does NOT run: `python3 -m unittest discover -s deploy/tests -v` (the Compose file, the deploy job and deploy/remote-deploy.sh, and the setup guide docs/deployment.md) and `python3 .github/workflow-tests/test_backend_deploy.py` (the trigger filters and shell steps of .github/workflows/backend-deploy.yml). Both use the system python3 with PyYAML, not uv. Run them for any change under deploy/, docs/deployment.md or that workflow.",
+    "The deploy tests never use Docker, SSH or a server: they read the workflow as YAML, run its shell steps in bash, and run remote-deploy.sh against fake docker and curl commands. Copy that pattern for a new deploy test.",
+    "The Staging app workflow has three more suites that scripts/gate.sh does NOT run: `python3 .github/workflow-tests/test_staging_app.py` (the triggers, shell steps and publish job of .github/workflows/staging-app.yml; 78 tests), `python3 .github/workflow-tests/test_staging_app_guide.py` (the guide docs/staging-app.md against that workflow; 16 tests) and `python3 .github/workflow-tests/test_staging_flavour.py` (real Gradle builds of the staging flavour; 14 tests). They use the system python3 with PyYAML. Run them for any change under app/app/build.gradle.kts, app/app/network-security/, app/app/src/staging/, docs/staging-app.md or that workflow."
   ],
   "deploy": {
     "health_checks": [
@@ -49,7 +52,10 @@
       "The backend runs as ONE instance in v1: the translation cache and the recognition rate budget are per-process (design decisions D7 and D8). Running two replicas doubles the outgoing rate against Sarvam's limit — do not scale out before that state moves out of process.",
       "SARVAM_API_KEY must be set in the environment or every recognition call fails. ADMIN_TOKEN must be set for the admin configuration endpoints to exist at all, which the system test data loader needs.",
       "Mount the BACKEND_CONFIG_DIR override directory as a volume. Without it, configuration an operator or the loader writes is lost when the container restarts.",
-      "Build the image from the backend directory: docker build -f backend/Dockerfile -t mirror-backend backend."
+      "Build the image from the backend directory: docker build -f backend/Dockerfile -t mirror-backend backend.",
+      "Staging and production deploy through the 'Backend deploy' workflow (.github/workflows/backend-deploy.yml): a push to staging or main that touches backend/, deploy/ or that workflow builds the image, ships it to the branch's server over SSH, and checks http://127.0.0.1:8000/healthz on that server for up to 90 seconds. A push of documents, the app or factory files deploys nothing.",
+      "The health check above reaches a backend on the same machine only. The factory's runners cannot reach the staging server, so the proof that staging is healthy is a green 'Backend deploy' run on the staging branch, not this curl. There is no automatic rollback: re-run the last good 'Backend deploy' run (docs/deployment.md section 7).",
+      "The staging app is published by the 'Staging app' workflow (.github/workflows/staging-app.yml): a push to staging that touches app/ or that workflow, or a manual run on staging, runs the app's unit suite, builds the staging flavour signed with the test key, and creates a GitHub pre-release with the APK. Its version code comes from the workflow's run number, so never rename that file: a rename restarts the number and new builds stop installing over old ones. Setup and secrets: docs/staging-app.md."
     ]
   },
   "test_data": {
@@ -74,6 +80,206 @@
     "The test_data commands reach the backend over HTTP, so they run from the repository root and need two environment variables: ADMIN_TOKEN (the token the target backend was started with) and BACKEND_URL (where it runs — the default is http://127.0.0.1:8000, which is only right for a backend on the same machine). They take the epic's data directory as their last argument.",
     "`load` with no --set removes every override and applies the baseline language configuration, which is the state every system test case starts from; `load --set <name>` applies one named set for one case. Both replace a whole configuration file, so running either twice changes nothing the second time.",
     "Camera images are never written to disk. They live in request memory and are discarded with the response.",
-    "The Sarvam key, the admin token and the app token must appear in no log line and no response body."
+    "The Sarvam key, the admin token and the app token must appear in no log line and no response body.",
+    "The five `docker compose config` tests in deploy/tests are skipped on the factory's runners, because there is no Docker. 'OK (skipped=5)' there is the clean baseline, not a regression.",
+    "docs/deployment.md is under test: deploy/tests/test_setup_guide.py fails when a secret or variable the workflow or the Compose file reads is missing from the guide's table, or the guide lists one they do not read. Adding a secret means adding its line to the guide in the same PR.",
+    "The 14 tests in .github/workflow-tests/test_staging_flavour.py are all skipped on the factory's runners, because there is no JDK or Android SDK. 'OK (skipped=14)' there is the clean baseline; MIRROR_APP_GATE=required turns the missing SDK into a failure.",
+    "docs/staging-app.md is under test: test_staging_app_guide.py fails when a secret or an ::error:: message in staging-app.yml is missing from the guide. Adding either means changing the guide in the same PR."
+  ],
+  "plain_names": [
+    {
+      "code": [
+        "app/",
+        "MainActivity",
+        "MirrorApplication"
+      ],
+      "plain": "the app",
+      "means": "The Android app a person points at text to read it in their own language."
+    },
+    {
+      "code": [
+        "backend/",
+        "mirror-backend",
+        "translate proxy service"
+      ],
+      "plain": "the backend",
+      "means": "The service the app calls; it holds the Sarvam key, the rate budget and the translation cache."
+    },
+    {
+      "code": [
+        "Sarvam",
+        "sarvam_parse",
+        "sarvam_translate",
+        "providers/"
+      ],
+      "plain": "Sarvam",
+      "means": "The outside service that reads text in an image and translates it."
+    },
+    {
+      "code": [
+        "CameraPreview",
+        "camera_preview",
+        "cameraContent"
+      ],
+      "plain": "the camera view",
+      "means": "The live picture from the phone's camera on the main screen."
+    },
+    {
+      "code": [
+        "CameraPermissionStatus",
+        "camera_permission"
+      ],
+      "plain": "the camera permission",
+      "means": "Android's yes/no for letting Mirror use the camera."
+    },
+    {
+      "code": [
+        "frame",
+        "POST /v1/frames/translate",
+        "FrameCropSource",
+        "BackendFrameTranslator",
+        "FrameTranslator"
+      ],
+      "plain": "the camera picture sent for translation",
+      "means": "A cropped snapshot of the camera view that the app sends to the backend."
+    },
+    {
+      "code": [
+        "recognition",
+        "recognition.call",
+        "sarvam_parse",
+        "OCR"
+      ],
+      "plain": "reading the text",
+      "means": "Sarvam finding the words in the picture."
+    },
+    {
+      "code": [
+        "translation",
+        "sarvam_translate"
+      ],
+      "plain": "the translation",
+      "means": "The words turned into the language the person chose."
+    },
+    {
+      "code": [
+        "TranslatedOverlay",
+        "TranslatedOverlayState",
+        "overlay"
+      ],
+      "plain": "the translated overlay",
+      "means": "The translated text the app draws on top of the original text in the camera view."
+    },
+    {
+      "code": [
+        "TextRegionTracker",
+        "TextAnchor",
+        "CameraTextAnalyzer",
+        "text region",
+        "anchor"
+      ],
+      "plain": "where the text sits",
+      "means": "The part of the camera view where the phone has found text; the overlay follows it."
+    },
+    {
+      "code": [
+        "RefreshLoop",
+        "refresh cycle"
+      ],
+      "plain": "the automatic refresh",
+      "means": "The app re-reading and re-translating the text every few seconds with no tap."
+    },
+    {
+      "code": [
+        "LanguagePickerSheet",
+        "LanguageSelection",
+        "LanguageChoiceStore",
+        "languages_title"
+      ],
+      "plain": "the language picker",
+      "means": "The Languages sheet where a person picks 'Translate from' and 'Translate to'."
+    },
+    {
+      "code": [
+        "languages.json",
+        "GET /v1/languages",
+        "BackendLanguageCatalogue",
+        "Languages.kt"
+      ],
+      "plain": "the language list",
+      "means": "The languages the backend offers; an operator can change it without a restart."
+    },
+    {
+      "code": [
+        "budget",
+        "budget.json",
+        "recognition_per_minute",
+        "budget_exhausted"
+      ],
+      "plain": "the rate budget",
+      "means": "How many reading calls a minute all users together may make to Sarvam."
+    },
+    {
+      "code": [
+        "translation_cache",
+        "TranslationCache"
+      ],
+      "plain": "the translation cache",
+      "means": "Recent translations the backend keeps for ten minutes, so the same text is not translated twice."
+    },
+    {
+      "code": [
+        "override",
+        "write_override",
+        "BACKEND_CONFIG_DIR",
+        "admin config",
+        "MANAGED_CONFIGS"
+      ],
+      "plain": "the operator's configuration change",
+      "means": "A language list or rate budget an operator sets through the admin endpoints; it replaces the shipped file."
+    },
+    {
+      "code": [
+        "ADMIN_TOKEN"
+      ],
+      "plain": "the admin token",
+      "means": "The password that switches on and protects the operator's configuration endpoints."
+    },
+    {
+      "code": [
+        "APP_TOKEN",
+        "require_app_token"
+      ],
+      "plain": "the app token",
+      "means": "An optional password the app sends; when set, the backend refuses calls without it."
+    },
+    {
+      "code": [
+        "dev",
+        "systemTest",
+        "flavour",
+        "BackendConfig"
+      ],
+      "plain": "the app build",
+      "means": "dev talks to a backend on the developer's machine; systemTest talks to the backend the testers use."
+    },
+    {
+      "code": [
+        "backend-deploy.yml",
+        "deploy job",
+        "remote-deploy.sh",
+        "compose.yaml"
+      ],
+      "plain": "the backend deploy",
+      "means": "The GitHub workflow that puts the backend on the staging or production server."
+    },
+    {
+      "code": [
+        "healthz",
+        "/healthz"
+      ],
+      "plain": "the health check",
+      "means": "The backend's 'I am up' answer."
+    }
   ]
 }
